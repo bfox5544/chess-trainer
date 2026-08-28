@@ -1,0 +1,14 @@
+[Event "Rated Bullet game"]
+[Site "https://lichess.org/short001"]
+[Date "2024.03.12"]
+[White "BobLearner"]
+[Black "quitter"]
+[Result "1-0"]
+[UTCDate "2024.03.12"]
+[UTCTime "10:00:00"]
+[WhiteElo "1500"]
+[BlackElo "?"]
+[Variant "Standard"]
+[TimeControl "60+0"]
+
+1. e4 1-0

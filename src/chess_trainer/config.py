@@ -1,0 +1,63 @@
+"""Application settings, loaded from environment variables (and `.env`).
+
+Every tunable lives here so thresholds are never hard-coded in logic modules.
+Pure functions receive small frozen dataclasses built from these settings,
+which keeps them testable without touching the environment.
+"""
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Database
+    database_url: str = "postgresql+psycopg://chess:chess@localhost:54329/chess_trainer"
+    test_database_url: str = "postgresql+psycopg://chess:chess@localhost:54329/chess_trainer_test"
+
+    # Stockfish
+    stockfish_path: str = "/opt/homebrew/bin/stockfish"
+    engine_threads: int = 2
+    engine_hash_mb: int = 128
+    engine_eval_file: str | None = None
+    analysis_depth: int = 16
+    puzzle_depth: int | None = None
+
+    # Move classification: win-probability points lost (0-100 scale).
+    inaccuracy_threshold: float = 5.0
+    mistake_threshold: float = 10.0
+    blunder_threshold: float = 15.0
+
+    # Time pressure: clock below min(seconds, fraction * base time).
+    time_pressure_seconds: float = 30.0
+    time_pressure_fraction: float = 0.1
+
+    # Puzzle generation
+    puzzle_uniqueness_gap: float = 15.0
+    puzzle_min_result_win_pct: float = 50.0
+    puzzle_max_plies: int = 10
+    puzzle_crushing_win_pct: float = 85.0
+    puzzle_advantage_win_pct: float = 65.0
+
+    # HTTP clients
+    lichess_base_url: str = "https://lichess.org"
+    chesscom_base_url: str = "https://api.chess.com"
+    http_user_agent: str = "chess-trainer/0.1"
+    http_timeout_seconds: float = 30.0
+    http_max_retries: int = 4
+
+    # Worker
+    worker_poll_seconds: float = 1.0
+    # A running job whose heartbeat is older than this is assumed crashed.
+    job_stale_seconds: float = 600.0
+
+    @property
+    def effective_puzzle_depth(self) -> int:
+        return self.puzzle_depth or self.analysis_depth
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

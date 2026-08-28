@@ -1,0 +1,14 @@
+[Event "Rated Chess960 game"]
+[Site "https://lichess.org/var96000"]
+[Date "2024.03.11"]
+[White "BobLearner"]
+[Black "someone_else"]
+[Result "0-1"]
+[UTCDate "2024.03.11"]
+[UTCTime "09:00:00"]
+[WhiteElo "1500"]
+[BlackElo "1500"]
+[Variant "Chess960"]
+[TimeControl "300+0"]
+
+1. e4 e5 2. Nf3 Nc6 3. d4 exd4 0-1

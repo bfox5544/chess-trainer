@@ -1,0 +1,18 @@
+[Event "Live Chess"]
+[Site "Chess.com"]
+[Date "2024.02.20"]
+[Round "-"]
+[White "BobLearner"]
+[Black "duke_and_count"]
+[Result "1-0"]
+[ECO "C41"]
+[ECOUrl "https://www.chess.com/openings/Philidor-Defense-3.d4-Bg4"]
+[UTCDate "2024.02.20"]
+[UTCTime "20:15:42"]
+[WhiteElo "1622"]
+[BlackElo "1590"]
+[TimeControl "600"]
+[Termination "BobLearner won by checkmate"]
+[Link "https://www.chess.com/game/live/1234567890"]
+
+1. e4 {[%clk 0:09:58.1]} 1... e5 {[%clk 0:09:57.3]} 2. Nf3 {[%clk 0:09:55]} 2... d6 {[%clk 0:09:52]} 3. d4 {[%clk 0:09:50]} 3... Bg4 {[%clk 0:09:40]} 4. dxe5 {[%clk 0:09:41]} 4... Bxf3 {[%clk 0:09:31]} 5. Qxf3 {[%clk 0:09:38]} 5... dxe5 {[%clk 0:09:28]} 6. Bc4 {[%clk 0:09:30]} 6... Nf6 {[%clk 0:09:10]} 7. Qb3 {[%clk 0:09:12]} 7... Qe7 {[%clk 0:08:40]} 8. Nc3 {[%clk 0:08:55]} 8... c6 {[%clk 0:08:21]} 9. Bg5 {[%clk 0:08:40]} 9... b5 {[%clk 0:07:50]} 10. Nxb5 {[%clk 0:08:02]} 10... cxb5 {[%clk 0:07:44]} 11. Bxb5+ {[%clk 0:07:58]} 11... Nbd7 {[%clk 0:07:30]} 12. O-O-O {[%clk 0:07:40]} 12... Rd8 {[%clk 0:07:02]} 13. Rxd7 {[%clk 0:07:11]} 13... Rxd7 {[%clk 0:06:55]} 14. Rd1 {[%clk 0:07:05]} 14... Qe6 {[%clk 0:06:01]} 15. Bxd7+ {[%clk 0:06:50]} 15... Nxd7 {[%clk 0:05:58]} 16. Qb8+ {[%clk 0:06:31]} 16... Nxb8 {[%clk 0:05:55]} 17. Rd8# {[%clk 0:06:29]} 1-0
