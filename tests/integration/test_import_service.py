@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 
 import pytest
 from sqlalchemy import func, select
@@ -9,26 +9,9 @@ from chess_trainer.db.enums import Color, Platform
 from chess_trainer.db.models import AccountGame, ChessAccount, Game
 from chess_trainer.ingestion.service import import_games
 from chess_trainer.ingestion.sources import FetchFilters, RawGame
+from tests.fakes import StubSource
 
 pytestmark = pytest.mark.integration
-
-
-class StubSource:
-    """A GameSource that replays fixed games, so no HTTP is involved."""
-
-    platform = Platform.LICHESS
-
-    def __init__(self, games: list[RawGame]) -> None:
-        self._games = games
-
-    def fetch_games(self, username: str, filters: FetchFilters) -> Iterator[RawGame]:
-        yield from self._games[: filters.max_games]
-
-
-@pytest.fixture
-def bob(session: Session) -> ChessAccount:
-    user = create_user(session, "Bob")
-    return link_account(session, user, Platform.LICHESS, "BobLearner")
 
 
 @pytest.fixture

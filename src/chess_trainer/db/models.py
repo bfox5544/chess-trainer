@@ -3,10 +3,19 @@
 from datetime import datetime
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from chess_trainer.db.base import Base, str_enum, utcnow
-from chess_trainer.db.enums import Color, Platform, TimeClass
+from chess_trainer.db.enums import (
+    Classification,
+    Color,
+    JobKind,
+    JobStatus,
+    Phase,
+    Platform,
+    TimeClass,
+)
 
 
 class User(Base):
@@ -61,6 +70,17 @@ class Game(Base):
     eco: Mapped[str | None] = mapped_column(sa.String(3))
     opening_name: Mapped[str | None] = mapped_column(sa.String(200))
     opening_family: Mapped[str | None] = mapped_column(sa.String(200), index=True)
+    # Number of plies that stayed inside the opening book (set by analysis).
+    opening_ply: Mapped[int | None]
+    # First ply played in each phase; null if the game never reached it.
+    middlegame_start_ply: Mapped[int | None]
+    endgame_start_ply: Mapped[int | None]
+    # What the stored move analyses were produced with; null = not analyzed.
+    analysis_engine_config_id: Mapped[int | None] = mapped_column(
+        sa.ForeignKey("engine_configs.id")
+    )
+    analyzed_depth: Mapped[int | None]
+    analyzed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
 
 
@@ -76,3 +96,100 @@ class AccountGame(Base):
         sa.ForeignKey("games.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     color: Mapped[Color] = mapped_column(str_enum(Color))
+
+
+class EngineConfig(Base):
+    """An engine identity whose evaluations are comparable with each other.
+
+    The fingerprint covers the engine name/version and every option that
+    changes what the engine evaluates. Threads and hash size are excluded on
+    purpose: they change speed, not meaning (see README).
+    """
+
+    __tablename__ = "engine_configs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engine_name: Mapped[str] = mapped_column(sa.String(200))
+    options: Mapped[dict[str, str]] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(sa.String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+
+
+class PositionEval(Base):
+    """The analysis cache: one row per (position, engine config, line count)."""
+
+    __tablename__ = "position_evals"
+
+    # `board.epd()`: the position without move counters, so transpositions hit.
+    position_key: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    engine_config_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("engine_configs.id", ondelete="CASCADE"), primary_key=True
+    )
+    multipv: Mapped[int] = mapped_column(primary_key=True)
+    depth: Mapped[int]
+    # [{"cp": int|null, "mate": int|null, "pv": [uci, ...]}, ...] best line first,
+    # scores from White's point of view.
+    lines: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+
+
+class MoveAnalysis(Base):
+    """One analyzed move (both colors are stored; reports filter by color).
+
+    Evals are copied from the cache at analysis time so reports need no joins
+    and stay stable when the cache is later deepened. All evals are from
+    White's point of view; win percentages are from the mover's.
+    """
+
+    __tablename__ = "move_analyses"
+    __table_args__ = (sa.UniqueConstraint("game_id", "ply"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    game_id: Mapped[int] = mapped_column(sa.ForeignKey("games.id", ondelete="CASCADE"))
+    ply: Mapped[int]  # 0-based: 0 is White's first move
+    move_number: Mapped[int]
+    color: Mapped[Color] = mapped_column(str_enum(Color))
+    san: Mapped[str] = mapped_column(sa.String(10))
+    uci: Mapped[str] = mapped_column(sa.String(5))
+    fen_before: Mapped[str] = mapped_column(sa.String(100))
+    eval_before_cp: Mapped[int | None]
+    eval_before_mate: Mapped[int | None]
+    eval_after_cp: Mapped[int | None]
+    eval_after_mate: Mapped[int | None]
+    eval_depth_before: Mapped[int]
+    eval_depth_after: Mapped[int]
+    best_move_uci: Mapped[str | None] = mapped_column(sa.String(5))
+    best_move_san: Mapped[str | None] = mapped_column(sa.String(10))
+    best_line: Mapped[list[str]] = mapped_column(JSONB)
+    win_pct_before: Mapped[float]
+    win_pct_after: Mapped[float]
+    win_pct_loss: Mapped[float]
+    classification: Mapped[Classification] = mapped_column(str_enum(Classification), index=True)
+    is_best: Mapped[bool]
+    is_forced: Mapped[bool]  # only one legal move
+    in_book: Mapped[bool]
+    phase: Mapped[Phase] = mapped_column(str_enum(Phase))
+    clock_remaining_s: Mapped[float | None]
+    time_spent_s: Mapped[float | None]
+
+
+class Job(Base):
+    """A background job. This table *is* the queue (see README)."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[JobKind] = mapped_column(str_enum(JobKind))
+    status: Mapped[JobStatus] = mapped_column(
+        str_enum(JobStatus), default=JobStatus.QUEUED, index=True
+    )
+    params: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    progress_done: Mapped[int] = mapped_column(default=0)
+    progress_total: Mapped[int | None]
+    parent_id: Mapped[int | None] = mapped_column(sa.ForeignKey("jobs.id"), index=True)
+    error: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))

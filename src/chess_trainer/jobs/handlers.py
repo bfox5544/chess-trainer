@@ -1,0 +1,134 @@
+"""What each job kind actually does.
+
+Handlers are plain functions of (session, job, context). Nothing here knows
+about the queue's polling loop, so moving to another job runner later means
+writing new wrappers, not rewriting this logic.
+"""
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from chess_trainer.analysis.cache import EvalCache, Evaluator, get_or_create_engine_config
+from chess_trainer.analysis.classify import Thresholds
+from chess_trainer.analysis.engine import Engine
+from chess_trainer.analysis.openings import OpeningBook
+from chess_trainer.analysis.pipeline import analyze_game
+from chess_trainer.config import Settings
+from chess_trainer.db.enums import JobKind, Platform, TimeClass
+from chess_trainer.db.models import AccountGame, ChessAccount, Game, Job
+from chess_trainer.ingestion.service import import_games
+from chess_trainer.ingestion.sources import FetchFilters, GameSource
+from chess_trainer.jobs import queue
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class JobContext:
+    """Everything handlers need from the outside world, injectable for tests."""
+
+    settings: Settings
+    build_source: Callable[[Platform], GameSource]
+    # Called lazily so a worker that only imports never starts Stockfish.
+    get_engine: Callable[[], Engine]
+    book: OpeningBook
+
+
+def thresholds_from(settings: Settings) -> Thresholds:
+    return Thresholds(
+        settings.inaccuracy_threshold, settings.mistake_threshold, settings.blunder_threshold
+    )
+
+
+def filters_from(params: dict[str, object]) -> FetchFilters:
+    time_classes = params.get("time_classes")
+    since = params.get("since")
+    return FetchFilters(
+        time_classes=frozenset(TimeClass(tc) for tc in time_classes) if time_classes else None,  # type: ignore[union-attr]
+        max_games=int(params.get("max_games", 50)),  # type: ignore[call-overload]
+        since=datetime.fromisoformat(since) if isinstance(since, str) else None,
+    )
+
+
+def run_import(session: Session, job: Job, context: JobContext) -> dict[str, object]:
+    """Import an account's games, then queue their analysis as a child job."""
+    account = session.get_one(ChessAccount, job.params["account_id"])
+    source = context.build_source(account.platform)
+    result = import_games(session, account, source, filters_from(job.params))
+    session.commit()
+    summary = result.as_dict()
+    if job.params.get("analyze", True):
+        child = queue.enqueue(
+            session,
+            JobKind.ANALYZE,
+            {"account_id": account.id, "depth": job.params.get("depth")},
+            parent_id=job.id,
+        )
+        session.commit()
+        summary["analyze_job_id"] = child.id
+    return summary
+
+
+def games_needing_analysis(
+    session: Session, account_id: int, depth: int, engine_config_id: int
+) -> list[Game]:
+    """Games not yet analyzed at this depth by a compatible engine."""
+    stmt = (
+        select(Game)
+        .join(AccountGame, AccountGame.game_id == Game.id)
+        .where(
+            AccountGame.account_id == account_id,
+            or_(
+                Game.analyzed_depth.is_(None),
+                Game.analyzed_depth < depth,
+                Game.analysis_engine_config_id != engine_config_id,
+            ),
+        )
+        .order_by(Game.played_at.desc().nulls_last(), Game.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def run_analyze(session: Session, job: Job, context: JobContext) -> dict[str, object]:
+    """Analyze every game of an account that still needs it.
+
+    Commits after each game, so a crash loses at most one game of work and a
+    re-run resumes where it stopped.
+    """
+    settings = context.settings
+    depth = int(job.params.get("depth") or settings.analysis_depth)  # type: ignore[call-overload]
+    engine = context.get_engine()
+    config = get_or_create_engine_config(session, engine)
+    evaluator = Evaluator(engine, EvalCache(session, config.id))
+    games = games_needing_analysis(session, int(job.params["account_id"]), depth, config.id)  # type: ignore[call-overload]
+    queue.report_progress(session, job, 0, len(games))
+    failed: dict[str, str] = {}
+    for done, game in enumerate(games, start=1):
+        try:
+            # Savepoint: a game that fails rolls back alone.
+            with session.begin_nested():
+                analyze_game(
+                    session,
+                    game,
+                    evaluator,
+                    context.book,
+                    depth,
+                    thresholds_from(settings),
+                    config.id,
+                )
+        except Exception as exc:
+            logger.exception("analysis failed for game %s", game.id)
+            failed[str(game.id)] = repr(exc)
+        queue.report_progress(session, job, done)
+    return {"analyzed": len(games) - len(failed), "failed": failed, "depth": depth}
+
+
+HANDLERS: dict[JobKind, Callable[[Session, Job, JobContext], dict[str, object]]] = {
+    JobKind.IMPORT: run_import,
+    JobKind.ANALYZE: run_analyze,
+}
