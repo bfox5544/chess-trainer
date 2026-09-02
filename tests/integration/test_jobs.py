@@ -65,7 +65,12 @@ def test_import_then_analyze_end_to_end(
     analyze_job = session.scalars(select(Job).where(Job.kind == JobKind.ANALYZE)).one()
     assert analyze_job.status is JobStatus.SUCCEEDED
     assert (analyze_job.progress_done, analyze_job.progress_total) == (1, 1)
-    assert analyze_job.result == {"analyzed": 1, "failed": {}, "depth": 10}
+    assert analyze_job.result == {
+        "analyzed": 1,
+        "failed": {},
+        "depth": 10,
+        "puzzles_created": 1,
+    }
     assert session.scalars(select(Game)).one().analyzed_depth == 10
     blunders = session.scalars(
         select(MoveAnalysis).where(MoveAnalysis.classification == Classification.BLUNDER)

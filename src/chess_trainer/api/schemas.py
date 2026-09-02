@@ -1,0 +1,198 @@
+"""Request and response models. Kept separate from the ORM models so the API
+contract can stay stable while the schema evolves."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from chess_trainer.db.enums import (
+    Classification,
+    Color,
+    JobKind,
+    JobStatus,
+    Phase,
+    Platform,
+    PuzzleOutcome,
+    TimeClass,
+)
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Users and accounts ------------------------------------------------------
+
+
+class UserCreate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100)
+
+
+class AccountCreate(BaseModel):
+    platform: Platform
+    username: str = Field(min_length=1, max_length=100)
+
+
+class AccountOut(ApiModel):
+    id: int
+    user_id: int
+    platform: Platform
+    username: str
+    last_synced_at: datetime | None
+
+
+class UserOut(ApiModel):
+    id: int
+    display_name: str
+    created_at: datetime
+    accounts: list[AccountOut]
+
+
+# --- Jobs --------------------------------------------------------------------
+
+
+class ImportRequest(BaseModel):
+    time_classes: list[TimeClass] | None = Field(
+        default=None, description="Only import these time classes. Omit for all."
+    )
+    max_games: int = Field(default=50, ge=1, le=500)
+    since: datetime | None = Field(default=None, description="Only games played after this.")
+    analyze: bool = Field(default=True, description="Queue analysis once the import finishes.")
+    depth: int | None = Field(default=None, ge=1, le=40, description="Defaults to ANALYSIS_DEPTH.")
+
+
+class AnalyzeRequest(BaseModel):
+    depth: int | None = Field(default=None, ge=1, le=40, description="Defaults to ANALYSIS_DEPTH.")
+
+
+class JobAccepted(BaseModel):
+    job_id: int
+
+
+class JobSummary(ApiModel):
+    id: int
+    kind: JobKind
+    status: JobStatus
+    progress_done: int
+    progress_total: int | None
+    result: dict[str, object] | None
+    error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class JobOut(JobSummary):
+    params: dict[str, object]
+    parent_id: int | None
+    # e.g. the analysis job an import queued, so one poll shows the whole chain.
+    children: list[JobSummary]
+
+
+# --- Games and reports -------------------------------------------------------
+
+
+class GameOut(ApiModel):
+    id: int
+    platform: Platform
+    played_at: datetime | None
+    white_username: str
+    black_username: str
+    white_rating: int | None
+    black_rating: int | None
+    result: str
+    time_class: TimeClass
+    eco: str | None
+    opening_name: str | None
+    opening_ply: int | None
+    middlegame_start_ply: int | None
+    endgame_start_ply: int | None
+    analyzed_depth: int | None
+
+
+class MoveOut(ApiModel):
+    ply: int
+    move_number: int
+    color: Color
+    san: str
+    uci: str
+    fen_before: str
+    eval_before_cp: int | None
+    eval_before_mate: int | None
+    eval_after_cp: int | None
+    eval_after_mate: int | None
+    best_move_san: str | None
+    best_move_uci: str | None
+    win_pct_before: float
+    win_pct_after: float
+    win_pct_loss: float
+    classification: Classification
+    is_best: bool
+    is_forced: bool
+    in_book: bool
+    phase: Phase
+    clock_remaining_s: float | None
+    time_spent_s: float | None
+
+
+class StatsOut(ApiModel):
+    moves: int
+    inaccuracies: int
+    mistakes: int
+    blunders: int
+    average_win_pct_loss: float
+    errors_per_100_moves: float
+
+
+class GameReportOut(ApiModel):
+    game: GameOut
+    white: StatsOut
+    black: StatsOut
+    moves: list[MoveOut]
+
+
+class BucketOut(ApiModel):
+    key: str
+    stats: StatsOut
+
+
+class WeaknessReportOut(ApiModel):
+    games_analyzed: int
+    overall: StatsOut
+    by_phase: list[BucketOut]
+    by_opening: list[BucketOut]
+    by_time_pressure: list[BucketOut]
+    by_motif: dict[str, int]
+
+
+# --- Puzzles -----------------------------------------------------------------
+
+
+class SolutionStepOut(BaseModel):
+    uci: str
+    san: str
+    by: str
+    cp: int | None
+    mate: int | None
+    win_pct: float
+    second_best_uci: str | None
+    second_best_win_pct: float | None
+
+
+class PuzzleOut(ApiModel):
+    id: int
+    game_id: int
+    account_id: int
+    ply: int
+    fen: str
+    user_color: Color
+    phase: Phase
+    severity: Classification
+    outcome: PuzzleOutcome | None
+    played_san: str
+    played_uci: str
+    played_win_pct: float
+    solution: list[SolutionStepOut]
+    solution_plies: int
+    themes: list[str]
+    depth: int

@@ -14,6 +14,9 @@ from chess_trainer.db.enums import (
     JobStatus,
     Phase,
     Platform,
+    PuzzleOutcome,
+    PuzzleSource,
+    PuzzleStatus,
     TimeClass,
 )
 
@@ -193,3 +196,53 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+
+
+class Puzzle(Base):
+    """A puzzle candidate from one of the user's own mistakes.
+
+    Rejected candidates are kept (with a reason) so thresholds can be tuned by
+    querying instead of re-analyzing. Keyed by (game, ply) so re-analysis
+    updates a puzzle in place and its id stays valid for future attempt
+    history (see README "Designed for later").
+    """
+
+    __tablename__ = "puzzles"
+    __table_args__ = (sa.UniqueConstraint("game_id", "ply"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[PuzzleSource] = mapped_column(
+        str_enum(PuzzleSource), default=PuzzleSource.OWN_GAME
+    )
+    user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(sa.ForeignKey("chess_accounts.id", ondelete="CASCADE"))
+    game_id: Mapped[int] = mapped_column(sa.ForeignKey("games.id", ondelete="CASCADE"))
+    ply: Mapped[int]
+    status: Mapped[PuzzleStatus] = mapped_column(str_enum(PuzzleStatus), index=True)
+    reject_reason: Mapped[str | None] = mapped_column(sa.String(50))
+    # The position to solve and who solves it.
+    fen: Mapped[str] = mapped_column(sa.String(100))
+    user_color: Mapped[Color] = mapped_column(str_enum(Color))
+    phase: Mapped[Phase] = mapped_column(str_enum(Phase))
+    # What the user actually played, and what it cost.
+    played_uci: Mapped[str] = mapped_column(sa.String(5))
+    played_san: Mapped[str] = mapped_column(sa.String(10))
+    played_win_pct: Mapped[float]
+    severity: Mapped[Classification] = mapped_column(str_enum(Classification))
+    # The full solution: user moves alternating with the opponent's best
+    # replies, each with its evaluation. Always ends on a user move.
+    # [{"uci", "san", "by": "user"|"opponent", "cp", "mate", "win_pct",
+    #   "second_best_uci", "second_best_win_pct"}, ...]
+    solution: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    solution_plies: Mapped[int]
+    outcome: Mapped[PuzzleOutcome | None] = mapped_column(str_enum(PuzzleOutcome))
+    # Win-% gap between the best and second-best first move (null: only one move).
+    uniqueness_gap: Mapped[float | None]
+    # Provenance, for re-validation when the engine or generator changes.
+    engine_config_id: Mapped[int] = mapped_column(sa.ForeignKey("engine_configs.id"))
+    depth: Mapped[int]
+    generator_version: Mapped[int]
+    # Tactical motifs; stays empty until taggers exist (reports/motifs.py).
+    themes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)

@@ -24,6 +24,7 @@ from chess_trainer.db.models import AccountGame, ChessAccount, Game, Job
 from chess_trainer.ingestion.service import import_games
 from chess_trainer.ingestion.sources import FetchFilters, GameSource
 from chess_trainer.jobs import queue
+from chess_trainer.puzzles.generator import generate_puzzles_for_game, puzzle_config_from
 
 logger = logging.getLogger(__name__)
 
@@ -108,24 +109,48 @@ def run_analyze(session: Session, job: Job, context: JobContext) -> dict[str, ob
     games = games_needing_analysis(session, int(job.params["account_id"]), depth, config.id)  # type: ignore[call-overload]
     queue.report_progress(session, job, 0, len(games))
     failed: dict[str, str] = {}
+    puzzles = 0
     for done, game in enumerate(games, start=1):
         try:
             # Savepoint: a game that fails rolls back alone.
             with session.begin_nested():
-                analyze_game(
-                    session,
-                    game,
-                    evaluator,
-                    context.book,
-                    depth,
-                    thresholds_from(settings),
-                    config.id,
+                puzzles += analyze_and_make_puzzles(
+                    session, game, evaluator, context, depth, config.id
                 )
         except Exception as exc:
             logger.exception("analysis failed for game %s", game.id)
             failed[str(game.id)] = repr(exc)
         queue.report_progress(session, job, done)
-    return {"analyzed": len(games) - len(failed), "failed": failed, "depth": depth}
+    return {
+        "analyzed": len(games) - len(failed),
+        "failed": failed,
+        "depth": depth,
+        "puzzles_created": puzzles,
+    }
+
+
+def analyze_and_make_puzzles(
+    session: Session,
+    game: Game,
+    evaluator: Evaluator,
+    context: JobContext,
+    depth: int,
+    engine_config_id: int,
+) -> int:
+    """Analyze one game, then build puzzles from it. Returns puzzles accepted."""
+    settings = context.settings
+    analyze_game(
+        session, game, evaluator, context.book, depth, thresholds_from(settings), engine_config_id
+    )
+    return generate_puzzles_for_game(
+        session,
+        game,
+        evaluator,
+        puzzle_config_from(settings),
+        # Never validate puzzles more shallowly than the analysis that found them.
+        max(depth, settings.effective_puzzle_depth),
+        engine_config_id,
+    )
 
 
 HANDLERS: dict[JobKind, Callable[[Session, Job, JobContext], dict[str, object]]] = {

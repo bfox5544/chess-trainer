@@ -144,7 +144,13 @@ def upgrade() -> None:
     op.add_column("games", sa.Column("analysis_engine_config_id", sa.Integer(), nullable=True))
     op.add_column("games", sa.Column("analyzed_depth", sa.Integer(), nullable=True))
     op.add_column("games", sa.Column("analyzed_at", sa.DateTime(timezone=True), nullable=True))
-    op.create_foreign_key(None, "games", "engine_configs", ["analysis_engine_config_id"], ["id"])
+    op.create_foreign_key(
+        "games_analysis_engine_config_id_fkey",
+        "games",
+        "engine_configs",
+        ["analysis_engine_config_id"],
+        ["id"],
+    )
     # ### end Alembic commands ###
 
 
@@ -154,7 +160,7 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, "games", type_="foreignkey")
+    op.drop_constraint("games_analysis_engine_config_id_fkey", "games", type_="foreignkey")
     op.drop_column("games", "analyzed_at")
     op.drop_column("games", "analyzed_depth")
     op.drop_column("games", "analysis_engine_config_id")
