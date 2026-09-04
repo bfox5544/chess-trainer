@@ -3,11 +3,20 @@
 from fastapi import APIRouter, HTTPException, status
 
 from chess_trainer.api.deps import SessionDep
-from chess_trainer.api.schemas import GameReportOut, JobOut, JobSummary, PuzzleOut
+from chess_trainer.api.schemas import (
+    GameOut,
+    GameReportOut,
+    JobOut,
+    JobSummary,
+    MoveOut,
+    PuzzleDetailOut,
+    ReasonOut,
+    StatsOut,
+)
 from chess_trainer.db.enums import PuzzleStatus
 from chess_trainer.db.models import Job, Puzzle
 from chess_trainer.jobs import queue
-from chess_trainer.reports.game_report import GameReport, build_game_report
+from chess_trainer.reports.game_report import build_game_report, explain_ply
 
 router = APIRouter()
 
@@ -23,20 +32,36 @@ def job_status(job_id: int, session: SessionDep) -> JobOut:
 
 
 @router.get("/games/{game_id}/analysis", response_model=GameReportOut, tags=["games"])
-def game_analysis(game_id: int, session: SessionDep) -> GameReport:
-    """Every move with its classification, plus per-side totals. `moves` is
-    empty (and `game.analyzed_depth` null) until the game has been analyzed."""
+def game_analysis(game_id: int, session: SessionDep) -> GameReportOut:
+    """Every move with its classification and a plain-language explanation,
+    plus per-side totals. `moves` is empty (and `game.analyzed_depth` null)
+    until the game has been analyzed."""
     report = build_game_report(session, game_id)
     if report is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"game {game_id} not found")
-    return report
+    moves = [
+        MoveOut.model_validate(move).model_copy(
+            update={"explanation": [ReasonOut.model_validate(r) for r in reasons]}
+        )
+        for move, reasons in zip(report.moves, report.explanations, strict=True)
+    ]
+    return GameReportOut(
+        game=GameOut.model_validate(report.game),
+        white=StatsOut.model_validate(report.white),
+        black=StatsOut.model_validate(report.black),
+        moves=moves,
+    )
 
 
-@router.get("/puzzles/{puzzle_id}", response_model=PuzzleOut, tags=["puzzles"])
-def puzzle(puzzle_id: int, session: SessionDep) -> Puzzle:
+@router.get("/puzzles/{puzzle_id}", response_model=PuzzleDetailOut, tags=["puzzles"])
+def puzzle(puzzle_id: int, session: SessionDep) -> PuzzleDetailOut:
     """Everything a client needs to present and check a puzzle: the start
-    position, whose move it is, and the full solution line."""
+    position, whose move it is, the full solution line, and why the move
+    played in the game was a mistake."""
     found = session.get(Puzzle, puzzle_id)
     if found is None or found.status is not PuzzleStatus.ACCEPTED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"puzzle {puzzle_id} not found")
-    return found
+    reasons = explain_ply(session, found.game_id, found.ply)
+    return PuzzleDetailOut.model_validate(found).model_copy(
+        update={"explanation": [ReasonOut.model_validate(r) for r in reasons]}
+    )

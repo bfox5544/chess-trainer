@@ -147,6 +147,7 @@ def test_puzzles_are_listed_and_fetchable(client: TestClient, user_id: int, anal
     assert [step["san"] for step in listed["solution"]] == ["g6"]
 
     fetched = client.get(f"/puzzles/{listed['id']}").json()
+    assert fetched.pop("explanation")
     assert fetched == listed
     assert client.get(f"/users/{user_id}/puzzles?phase=endgame").json() == []
 
@@ -206,3 +207,18 @@ def test_game_report_includes_engine_line_and_accuracy(
     assert report["moves"][5]["best_line"] == ["g7g6"]
     assert report["white"]["accuracy"] > 95
     assert report["black"]["accuracy"] < 80
+
+
+def test_moves_and_puzzles_carry_explanations(
+    client: TestClient, account_id: int, user_id: int, analyzed: int
+) -> None:
+    (game,) = client.get(f"/accounts/{account_id}/games").json()
+    moves = client.get(f"/games/{game['id']}/analysis").json()["moves"]
+    nf6, qxf7 = moves[5], moves[6]
+    assert [r["code"] for r in nf6["explanation"]] == ["allows_mate"]
+    assert nf6["explanation"][0]["text"] == "Allows White a forced mate in 1: 4. Qxf7#"
+    assert [r["code"] for r in qxf7["explanation"]] == ["checkmate"]
+
+    (listed,) = client.get(f"/users/{user_id}/puzzles").json()
+    puzzle = client.get(f"/puzzles/{listed['id']}").json()
+    assert [r["code"] for r in puzzle["explanation"]] == ["allows_mate"]

@@ -30,6 +30,17 @@ export function kindBadge(kind, { withLabel = false } = {}) {
   );
 }
 
+/** The API's plain-language reasons for a move, as a list. `kind` is a
+ * MOVE_KINDS key and colours the bullets. */
+export function reasonList(reasons, kind) {
+  if (!reasons?.length) return null;
+  return h(
+    "ul",
+    { class: "reasons" },
+    reasons.map((reason) => h("li", { "data-code": reason.code }, h("span", { class: `reason-dot cls-${kind}`, "aria-hidden": "true" }), h("span", {}, reason.text))),
+  );
+}
+
 export function pageHeader(title, subtitle, ...actions) {
   return h(
     "header",

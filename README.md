@@ -43,7 +43,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 190 tests; integration tests need `docker compose up -d`
+uv run pytest             # 201 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -60,10 +60,10 @@ uv run ruff check .
 | `GET /jobs/{id}` | Status, progress, result, and child jobs |
 | `GET /accounts/{id}/games` | Stored games, newest first |
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
-| `GET /games/{id}/analysis` | Game report: every move classified, plus per-side totals |
+| `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
-| `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution |
+| `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
 
 Interactive docs are served at `/docs`.
 
@@ -75,7 +75,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 | Page | What it does |
 |---|---|
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
-| Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and a plain-language note on each move |
+| Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
 | Puzzles | Training hub with solved/unsolved tracking; solve by clicking or dragging |
 | Stats | Move quality, accuracy by game, and errors by phase, clock, and opening |
 | Import | Link accounts and import; progress shows as a banner on every page |
@@ -254,6 +254,43 @@ positions with several good moves and most vague positional slips, but it
 can't tell a quiet only-move from a combination. That is motif detection,
 which is the next phase.
 
+### Move explanations are built at read time from stored lines
+
+Each move in a game report carries `explanation`: a list of reasons with a
+stable `code` and a sentence (`analysis/explain.py`). Examples:
+
+- "Puts the knight on g4 where it can be taken with Bxg4. Black wins a piece: 8...Bxg4 9. Bd2 Nge7."
+- "Ignores the threat to the rook on e2: Rxe2 wins it."
+- "Allows f4, forking the knight and the queen."
+- "Misses Qxh5 (takes the undefended knight on h5), winning two pawns."
+- "Misses a forced mate in 2: …" / "Allows White a forced mate in 1: 4. Qxf7#"
+
+No extra engine work is needed. The analysis already stores the engine's best
+line from every position, and the line from the position *after* a move
+(how the opponent punishes it) is the next ply's `best_line`. Explanations
+are therefore computed when a report is read, not stored. Every previously
+analyzed game gets them, and improving the wording needs no migration or
+re-analysis.
+
+How a material claim is made:
+
+1. Follow the punishing line (and the best line) for up to 8 plies and count
+   material at the first *quiet* point: nobody in check, and the next move
+   neither captures nor checks. Counting mid-exchange would report a queen as
+   lost when it is about to be recaptured.
+2. If the opponent just captured and this move (or the best move) takes back
+   on that square, count from before their capture. A recapture restores
+   balance; it doesn't "win" a piece.
+3. Cross-check against the engine: a claim of N points needs the eval to have
+   moved by at least 60·N centipawns. Line counting can stop mid-trade (a pawn
+   taken now and won back three moves later, as in the Petrov); the eval
+   can't be fooled that way.
+
+"Hanging", "ignores the threat" and "stops defending" are only said when
+they are literally true on the board. Otherwise the reason falls back to the
+line and its net result. A mistake with no material or mate consequence is
+called positional rather than given an invented tactic.
+
 ### One time-class formula for both platforms
 
 Lichess and Chess.com draw the bullet/blitz/rapid lines differently. Every
@@ -341,6 +378,10 @@ Not built, but the current design was shaped so these fit without rework:
 - The frontend is checked by scripted browser runs, not by an automated test
   suite; the backend only tests that its files are served.
 - Puzzle attempts are saved only in the browser, not on the server.
+- Explanations cover material, forks and mates. They don't yet name pins,
+  skewers, discovered attacks or trapped pieces (a trap shows up as "after the
+  reply …, material can't be held"), and positional mistakes get a generic
+  sentence.
 - There is no light theme and no board/piece theme choice.
 - A position with two different mating moves is rejected as "not unique",
   which loses some legitimate mate puzzles.

@@ -110,6 +110,11 @@ class GameOut(ApiModel):
     analyzed_depth: int | None
 
 
+class ReasonOut(ApiModel):
+    code: str = Field(description="Stable identifier, e.g. loses_material, allows_mate, tactic.")
+    text: str
+
+
 class MoveOut(ApiModel):
     ply: int
     move_number: int
@@ -134,6 +139,9 @@ class MoveOut(ApiModel):
     phase: Phase
     clock_remaining_s: float | None
     time_spent_s: float | None
+    explanation: list[ReasonOut] = Field(
+        default_factory=list, description="Why the move was good or bad, in plain language."
+    )
 
 
 class StatsOut(ApiModel):
@@ -206,3 +214,9 @@ class PuzzleOut(ApiModel):
     solution_plies: int
     themes: list[str]
     depth: int
+
+
+class PuzzleDetailOut(PuzzleOut):
+    explanation: list[ReasonOut] = Field(
+        default_factory=list, description="Why the game move (`played_san`) was a mistake."
+    )

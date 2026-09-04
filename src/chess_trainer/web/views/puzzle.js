@@ -6,7 +6,7 @@ import { Board, checkedKingSquare } from "../board.js";
 import { append, clear, formatDate, h, plural, titleCase } from "../dom.js";
 import { loadHistory, recordAttempt } from "../history.js";
 import { icon } from "../icons.js";
-import { button, chip, panel } from "../ui.js";
+import { button, chip, panel, reasonList } from "../ui.js";
 import { Chess } from "../vendor/chess.js";
 
 const REPLY_DELAY_MS = 450;
@@ -118,6 +118,8 @@ export async function renderPuzzle(container, context, puzzleId) {
           h("strong", { class: "cls-best" }, puzzle.solution[0].san),
           ` keeps it at ${Math.round(puzzle.solution[0].win_pct)}%.`,
         ),
+        puzzle.explanation?.length ? h("p", { class: "result-why" }, `Why ${puzzle.played_san} was a mistake`) : null,
+        reasonList(puzzle.explanation, puzzle.severity),
       ),
     );
     renderActions();

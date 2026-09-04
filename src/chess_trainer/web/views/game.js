@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { Board, checkedKingSquare, createEvalBar } from "../board.js";
 import { createEvalGraph } from "../charts.js";
 import { append, clear, formatClock, formatDate, formatEval, h, titleCase } from "../dom.js";
-import { MOVE_KINDS, button, chip, emptyState, kindBadge, moveKind, panel } from "../ui.js";
+import { MOVE_KINDS, button, chip, emptyState, kindBadge, moveKind, panel, reasonList } from "../ui.js";
 import { Chess } from "../vendor/chess.js";
 
 const ERRORS = ["inaccuracy", "mistake", "blunder"];
@@ -43,15 +43,9 @@ function explain(move, mine) {
   if (kind === "best") return "The engine's first choice.";
   if (kind === "good") return `A sound move. It keeps ${who} winning chances at about ${after}%.`;
 
-  const sign = move.color === "white" ? 1 : -1;
-  const mateAfter = move.eval_after_mate;
-  const mateBefore = move.eval_before_mate;
-  let detail = `It cut ${who} winning chances from ${before}% to ${after}%.`;
-  if (mateAfter !== null && mateAfter * sign < 0) {
-    detail = `It allows a forced mate in ${Math.abs(mateAfter)}.`;
-  } else if (mateBefore !== null && mateBefore * sign > 0) {
-    detail = `There was a forced mate in ${Math.abs(mateBefore)}, and this lets it slip (${before}% to ${after}%).`;
-  }
+  // The concrete reason (hung piece, missed mate, ...) comes from the API and
+  // is listed under this sentence.
+  const detail = `It cut ${who} winning chances from ${before}% to ${after}%.`;
   const hurried =
     move.time_spent_s !== null && move.time_spent_s < 3 && move.clock_remaining_s !== null
       ? ` Played in ${Math.round(move.time_spent_s)}s with ${formatClock(move.clock_remaining_s)} on the clock.`
@@ -189,6 +183,7 @@ export async function renderGame(container, context, gameId, startPly) {
         h("span", { class: "coach-eval" }, formatEval(move.eval_after_cp, move.eval_after_mate)),
       ),
       h("p", {}, explain(move, move.color === userColor)),
+      reasonList(move.explanation, kind),
       canCompare
         ? h(
             "div",

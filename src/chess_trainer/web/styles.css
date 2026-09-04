@@ -439,6 +439,10 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .coach-label { font-weight: 600; font-size: 0.9rem; }
 .coach-eval { margin-left: auto; padding: 1px 8px; border-radius: 4px; background: var(--surface-3); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.88rem; }
 .coach-best { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.reasons li { display: grid; grid-template-columns: 8px 1fr; gap: var(--space-2); align-items: baseline; line-height: 1.45; }
+.reason-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; transform: translateY(-1px); }
+.result-why { margin: var(--space-3) 0 var(--space-2); font-weight: 600; }
 .coach-meta { display: flex; gap: 6px; }
 
 .move-list { position: relative; max-height: 300px; overflow-y: auto; margin: 0 calc(-1 * var(--space-2)); font-variant-numeric: tabular-nums; }
