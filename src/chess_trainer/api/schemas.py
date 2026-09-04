@@ -123,6 +123,7 @@ class MoveOut(ApiModel):
     eval_after_mate: int | None
     best_move_san: str | None
     best_move_uci: str | None
+    best_line: list[str]
     win_pct_before: float
     win_pct_after: float
     win_pct_loss: float
@@ -142,6 +143,15 @@ class StatsOut(ApiModel):
     blunders: int
     average_win_pct_loss: float
     errors_per_100_moves: float
+    accuracy: float
+
+
+class UserGameOut(ApiModel):
+    game: GameOut
+    account_id: int
+    user_color: Color
+    outcome: str | None
+    stats: StatsOut | None
 
 
 class GameReportOut(ApiModel):

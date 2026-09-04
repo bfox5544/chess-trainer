@@ -5,9 +5,9 @@ player's games from Lichess and Chess.com, analyzes every move with Stockfish,
 reports where winning chances are being lost, and builds puzzles from the
 player's own mistakes.
 
-This is the MVP backend: ingestion, analysis, reports, puzzles, and an HTTP
-API. Spaced repetition, tactical motif detection, rating-band baselines, and a
-frontend are planned and the design leaves room for them (see
+This is the MVP: ingestion, analysis, reports, puzzles, an HTTP API, and a
+small web frontend to use it. Spaced repetition, tactical motif detection, and
+rating-band baselines are planned and the design leaves room for them (see
 [Designed for later](#designed-for-later)).
 
 ## Quick start
@@ -21,11 +21,12 @@ docker compose up -d                 # Postgres on localhost:54329
 uv sync
 uv run alembic upgrade head
 
-uv run uvicorn chess_trainer.api.app:app --reload    # API on :8000, docs at /docs
+uv run uvicorn chess_trainer.api.app:app --reload    # app on :8000, API docs at /docs
 uv run chess-trainer-worker                          # in a second terminal
 ```
 
-Then:
+Then open <http://localhost:8000>: create a user, link an account, import
+games, and watch the analysis run. Or drive the API directly:
 
 ```bash
 curl -X POST localhost:8000/users -H 'content-type: application/json' \
@@ -42,7 +43,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 182 tests; integration tests need `docker compose up -d`
+uv run pytest             # 190 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -50,6 +51,7 @@ uv run ruff check .
 
 | Method & path | Purpose |
 |---|---|
+| `GET /users` | List users (exists because there is no login yet) |
 | `POST /users` | Create a user |
 | `GET /users/{id}` | User and linked accounts |
 | `POST /users/{id}/accounts` | Link a Lichess or Chess.com account |
@@ -57,12 +59,58 @@ uv run ruff check .
 | `POST /accounts/{id}/analyze` | Queue (re-)analysis of stored games, optionally at a new depth |
 | `GET /jobs/{id}` | Status, progress, result, and child jobs |
 | `GET /accounts/{id}/games` | Stored games, newest first |
+| `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
 | `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution |
 
 Interactive docs are served at `/docs`.
+
+## Frontend
+
+A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
+(same origin, so no CORS setup).
+
+| Page | What it does |
+|---|---|
+| Home | Accuracy and error rate, what to work on, recent games, next puzzle |
+| Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and a plain-language note on each move |
+| Puzzles | Training hub with solved/unsolved tracking; solve by clicking or dragging |
+| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening |
+| Import | Link accounts and import; progress shows as a banner on every page |
+
+**Design system.** One stylesheet (`styles.css`) built on tokens: an ebony
+surface scale, ivory for primary actions, blue for focus and selection, and a
+slate-and-ivory board. Move quality has one colour and one symbol each
+(best ★, inaccuracy ?!, mistake ?, blunder ??), defined once in `ui.js`
+(`MOVE_KINDS`) and reused by the board badge, move list, charts, and tables.
+Reusable pieces live in `ui.js` (buttons, panels, stat tiles, empty states,
+dialogs), `board.js` (board, eval bar, thumbnails), and `charts.js`.
+
+Decisions worth knowing:
+
+- **No build step.** Plain HTML, CSS, and ES modules: no Node toolchain and
+  nothing to install. The trade-off is no type checking or component
+  framework; the code compensates with small modules and one `h()` helper.
+- **Two vendored assets, no runtime dependencies:** chess.js (BSD-2-Clause)
+  for move legality, and the "cburnett" piece set (BSD) that Lichess and
+  Wikipedia use. Charts are hand-drawn SVG, so there is no charting library.
+- **The board knows nothing about chess rules.** It draws a position, marks,
+  arrows, and a badge, and reports the square picked. A press reports its
+  square immediately and a drag reports the drop square, so click-to-move and
+  drag-and-drop share one code path.
+- **Accuracy is a simplified version of Lichess's:** the mean of a per-move
+  score derived from win-probability loss. It will not match Lichess or
+  Chess.com numbers exactly.
+- **"What to work on" has minimum sample sizes** (`insights.js`), so a few
+  unlucky moves are not reported as a weakness.
+- **Puzzle solving history is stored in the browser**, because the backend
+  does not record attempts yet. The UI says so, and clearing it asks first.
+- **All text goes through `textContent`** (`dom.js`), so usernames and opening
+  names from the platforms cannot inject markup.
+- There is no login: the chosen profile is remembered in `localStorage`
+  (`?user=ID` overrides it).
 
 ## Architecture
 
@@ -86,7 +134,8 @@ src/chess_trainer/
 ├── reports/         game report, weakness report, motif extension point
 ├── puzzles/         builder (pure), validators, generator, service
 ├── jobs/            queue, handlers, worker
-└── api/             FastAPI app, routes, schemas
+├── api/             FastAPI app, routes, schemas
+└── web/             static frontend served at /app (no build step)
 ```
 
 The rule throughout: **chess logic is pure, I/O lives at the edges.** Move
@@ -289,6 +338,10 @@ Not built, but the current design was shaped so these fit without rework:
 
 ## Known limitations
 
+- The frontend is checked by scripted browser runs, not by an automated test
+  suite; the backend only tests that its files are served.
+- Puzzle attempts are saved only in the browser, not on the server.
+- There is no light theme and no board/piece theme choice.
 - A position with two different mating moves is rejected as "not unique",
   which loses some legitimate mate puzzles.
 - Usernames are verified at import time, not when an account is linked; a typo

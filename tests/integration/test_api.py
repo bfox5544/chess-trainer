@@ -156,3 +156,53 @@ def test_analyze_endpoint_queues_a_job(client: TestClient, account_id: int) -> N
     assert response.status_code == 202
     job = client.get(f"/jobs/{response.json()['job_id']}").json()
     assert (job["kind"], job["params"]["depth"]) == ("analyze", 20)
+
+
+def test_users_can_be_listed(client: TestClient, user_id: int) -> None:
+    users = client.get("/users").json()
+    assert [u["id"] for u in users] == [user_id]
+
+
+def test_frontend_is_served(client: TestClient) -> None:
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307 and root.headers["location"] == "/app/"
+    page = client.get("/app/")
+    assert page.status_code == 200 and "Chess Trainer" in page.text
+    assets = [
+        "app.js", "api.js", "dom.js", "ui.js", "board.js", "charts.js", "jobs.js", "icons.js",
+        "history.js", "insights.js", "styles.css", "vendor/chess.js", "pieces/wK.svg",
+        "views/dashboard.js", "views/games.js", "views/game.js", "views/puzzles.js",
+        "views/puzzle.js", "views/stats.js", "views/import.js",
+    ]  # fmt: skip
+    for asset in assets:
+        assert client.get(f"/app/{asset}").status_code == 200, asset
+
+
+def test_user_games_show_color_outcome_and_stats(
+    client: TestClient, user_id: int, account_id: int, analyzed: int
+) -> None:
+    (row,) = client.get(f"/users/{user_id}/games").json()
+    assert (row["user_color"], row["outcome"], row["account_id"]) == ("black", "loss", account_id)
+    assert row["game"]["opening_name"] == "Bishop's Opening"
+    assert (row["stats"]["moves"], row["stats"]["blunders"]) == (3, 1)
+    assert 0 < row["stats"]["accuracy"] < 100
+    assert client.get(f"/users/{user_id}/games?account_id=999999").json() == []
+
+
+def test_user_games_before_analysis_have_no_stats(
+    client: TestClient, user_id: int, account_id: int, session: Session, job_context: JobContext
+) -> None:
+    client.post(f"/accounts/{account_id}/import", json={"analyze": False})
+    assert work_once(session, job_context)
+    (row,) = client.get(f"/users/{user_id}/games").json()
+    assert row["stats"] is None and row["game"]["analyzed_depth"] is None
+
+
+def test_game_report_includes_engine_line_and_accuracy(
+    client: TestClient, account_id: int, analyzed: int
+) -> None:
+    (game,) = client.get(f"/accounts/{account_id}/games").json()
+    report = client.get(f"/games/{game['id']}/analysis").json()
+    assert report["moves"][5]["best_line"] == ["g7g6"]
+    assert report["white"]["accuracy"] > 95
+    assert report["black"]["accuracy"] < 80

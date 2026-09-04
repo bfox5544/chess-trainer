@@ -1,9 +1,11 @@
 import chess
+import pytest
 
 from chess_trainer.db.enums import Classification as C
-from chess_trainer.db.enums import Phase
+from chess_trainer.db.enums import Color, Phase
 from chess_trainer.reports import motifs
-from chess_trainer.reports.stats import summarize
+from chess_trainer.reports.stats import move_accuracy, summarize
+from chess_trainer.reports.user_games import outcome_for
 from chess_trainer.reports.weakness import (
     MoveFact,
     aggregate,
@@ -92,3 +94,26 @@ def test_registered_taggers_are_combined(monkeypatch) -> None:  # type: ignore[n
 
     monkeypatch.setattr(motifs, "REGISTRY", [Always("pin"), Always("fork")])
     assert motifs.tag_motifs(chess.Board(), chess.Move.from_uci("e2e4"), []) == ["fork", "pin"]
+
+
+def test_move_accuracy_curve() -> None:
+    assert move_accuracy(0) == pytest.approx(100.0, abs=0.01)
+    assert move_accuracy(10) == pytest.approx(63.6, abs=0.1)
+    assert move_accuracy(30) == pytest.approx(24.8, abs=0.1)
+    assert move_accuracy(100) == 0.0  # clamped, never negative
+    assert move_accuracy(5) > move_accuracy(6)
+
+
+def test_accuracy_is_the_mean_over_moves() -> None:
+    assert summarize([(C.GOOD, 0.0), (C.GOOD, 0.0)]).accuracy == 100.0
+    mixed = summarize([(C.GOOD, 0.0), (C.MISTAKE, 10.0)])
+    assert mixed.accuracy == pytest.approx(81.8, abs=0.1)
+    assert summarize([]).accuracy == 0.0
+
+
+def test_outcome_is_from_the_users_side() -> None:
+    assert outcome_for("1-0", Color.WHITE) == "win"
+    assert outcome_for("1-0", Color.BLACK) == "loss"
+    assert outcome_for("0-1", Color.BLACK) == "win"
+    assert outcome_for("1/2-1/2", Color.WHITE) == "draw"
+    assert outcome_for("*", Color.WHITE) is None
