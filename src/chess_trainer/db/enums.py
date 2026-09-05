@@ -37,6 +37,7 @@ class Phase(StrEnum):
 class JobKind(StrEnum):
     IMPORT = "import"
     ANALYZE = "analyze"
+    PUZZLE_LIBRARY = "puzzle_library"  # load the Lichess puzzle database
 
 
 class JobStatus(StrEnum):

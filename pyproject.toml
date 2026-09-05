@@ -15,10 +15,12 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.54.0",
+    "zstandard>=0.25.0",
 ]
 
 [project.scripts]
 chess-trainer-worker = "chess_trainer.jobs.worker:main"
+chess-trainer-puzzle-library = "chess_trainer.library.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]

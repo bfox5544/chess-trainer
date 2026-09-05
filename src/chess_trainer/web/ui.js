@@ -84,6 +84,26 @@ export function emptyState({ iconName = "games", title, text, action }) {
   );
 }
 
+// Lichess theme keys are camelCase ("mateIn2", "hangingPiece"); a few need
+// hand-written labels, the rest are split into words.
+const THEME_LABELS = {
+  superGM: "Super GM game",
+  masterVsMaster: "Master vs master",
+  oneMove: "One-move",
+  xRayAttack: "X-ray attack",
+  enPassant: "En passant",
+  mix: "Healthy mix",
+};
+
+export function themeLabel(theme) {
+  if (THEME_LABELS[theme]) return THEME_LABELS[theme];
+  const words = String(theme)
+    .replace(/([a-z])([A-Z0-9])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function chip(text, kind = "") {
   return h("span", { class: `chip ${kind ? `cls-${kind}` : ""}` }, text);
 }

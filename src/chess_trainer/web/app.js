@@ -10,6 +10,7 @@ import { renderDashboard } from "./views/dashboard.js";
 import { renderGame } from "./views/game.js";
 import { renderGames } from "./views/games.js";
 import { renderImport, renderWelcome } from "./views/import.js";
+import { renderLibraryPuzzle } from "./views/library-puzzle.js";
 import { renderPuzzle } from "./views/puzzle.js";
 import { renderPuzzles } from "./views/puzzles.js";
 import { renderStats } from "./views/stats.js";
@@ -24,7 +25,8 @@ const NAV = [
 const ROUTES = {
   "": renderDashboard,
   games: (el, ctx, id, extra) => (id ? renderGame(el, ctx, id, extra) : renderGames(el, ctx)),
-  puzzles: (el, ctx, id) => (id ? renderPuzzle(el, ctx, id) : renderPuzzles(el, ctx)),
+  puzzles: (el, ctx, id, extra) =>
+    id === "lichess" && extra ? renderLibraryPuzzle(el, ctx, extra) : id ? renderPuzzle(el, ctx, id) : renderPuzzles(el, ctx),
   stats: renderStats,
   report: renderStats, // old link
   import: renderImport,
@@ -163,7 +165,7 @@ const REFRESH_ON_JOB = ["", "games", "puzzles", "stats", "report", "import"];
 
 jobs.subscribe((state, event) => {
   renderJobBanner(banner);
-  const onListPage = REFRESH_ON_JOB.includes(currentSection()) && !location.hash.match(/^#\/(games|puzzles)\/\d/);
+  const onListPage = REFRESH_ON_JOB.includes(currentSection()) && !location.hash.match(/^#\/(games|puzzles)\/[^?]/);
   if (event === "finished" && context.user && onListPage) route();
 });
 

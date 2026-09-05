@@ -1,27 +1,13 @@
 """The HTTP API end to end: real routes and database, fake engine and source."""
 
-from collections.abc import Iterator
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from chess_trainer.api.app import create_app
-from chess_trainer.api.deps import get_session
-from chess_trainer.config import Settings, get_settings
 from chess_trainer.jobs.handlers import JobContext
 from chess_trainer.jobs.worker import work_once
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def client(session: Session, settings: Settings) -> Iterator[TestClient]:
-    app = create_app()
-    app.dependency_overrides[get_session] = lambda: session
-    app.dependency_overrides[get_settings] = lambda: settings
-    with TestClient(app) as test_client:
-        yield test_client
 
 
 @pytest.fixture
@@ -173,10 +159,14 @@ def test_frontend_is_served(client: TestClient) -> None:
         "app.js", "api.js", "dom.js", "ui.js", "board.js", "charts.js", "jobs.js", "icons.js",
         "history.js", "insights.js", "styles.css", "vendor/chess.js", "pieces/wK.svg",
         "views/dashboard.js", "views/games.js", "views/game.js", "views/puzzles.js",
-        "views/puzzle.js", "views/stats.js", "views/import.js",
+        "views/puzzle.js", "views/stats.js", "views/import.js", "views/library-puzzle.js",
+        "trainer.js",
     ]  # fmt: skip
     for asset in assets:
-        assert client.get(f"/app/{asset}").status_code == 200, asset
+        response = client.get(f"/app/{asset}")
+        assert response.status_code == 200, asset
+        # Browsers must re-check files so an update is picked up on reload.
+        assert response.headers["cache-control"] == "no-cache", asset
 
 
 def test_user_games_show_color_outcome_and_stats(

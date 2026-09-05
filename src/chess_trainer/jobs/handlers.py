@@ -7,8 +7,10 @@ writing new wrappers, not rewriting this logic.
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import IO
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -24,6 +26,9 @@ from chess_trainer.db.models import AccountGame, ChessAccount, Game, Job
 from chess_trainer.ingestion.service import import_games
 from chess_trainer.ingestion.sources import FetchFilters, GameSource
 from chess_trainer.jobs import queue
+from chess_trainer.library.feed import open_lines
+from chess_trainer.library.parse import RowFilter
+from chess_trainer.library.store import import_library
 from chess_trainer.puzzles.generator import generate_puzzles_for_game, puzzle_config_from
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,17 @@ class JobContext:
     # Called lazily so a worker that only imports never starts Stockfish.
     get_engine: Callable[[], Engine]
     book: OpeningBook
+    # Opens the Lichess puzzle CSV; None means `settings.puzzle_library_source`.
+    open_puzzle_library: Callable[[], AbstractContextManager[IO[str]]] | None = field(default=None)
+
+    def puzzle_library_lines(self) -> AbstractContextManager[IO[str]]:
+        if self.open_puzzle_library is not None:
+            return self.open_puzzle_library()
+        return open_lines(
+            self.settings.puzzle_library_source,
+            user_agent=self.settings.http_user_agent,
+            timeout=self.settings.http_timeout_seconds,
+        )
 
 
 def thresholds_from(settings: Settings) -> Thresholds:
@@ -153,7 +169,30 @@ def analyze_and_make_puzzles(
     )
 
 
+def run_puzzle_library(session: Session, job: Job, context: JobContext) -> dict[str, object]:
+    """Load (or refresh) puzzles from the Lichess puzzle database."""
+    settings = context.settings
+    limit = job.params.get("limit")
+    limit = int(limit) if limit is not None else None  # type: ignore[call-overload]
+    row_filter = RowFilter(
+        min_popularity=settings.puzzle_library_min_popularity,
+        min_plays=settings.puzzle_library_min_plays,
+    )
+    queue.report_progress(session, job, 0, limit)
+    with context.puzzle_library_lines() as lines:
+        result = import_library(
+            session,
+            lines,
+            limit=limit,
+            row_filter=row_filter,
+            batch_size=settings.puzzle_library_batch_size,
+            on_progress=lambda stored: queue.report_progress(session, job, stored),
+        )
+    return result.as_dict()
+
+
 HANDLERS: dict[JobKind, Callable[[Session, Job, JobContext], dict[str, object]]] = {
     JobKind.IMPORT: run_import,
     JobKind.ANALYZE: run_analyze,
+    JobKind.PUZZLE_LIBRARY: run_puzzle_library,
 }

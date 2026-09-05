@@ -64,4 +64,9 @@ export const api = {
   puzzles: (userId, filters = {}) =>
     request("GET", `/users/${userId}/puzzles${query({ limit: 100, ...filters })}`),
   puzzle: (puzzleId) => request("GET", `/puzzles/${puzzleId}`),
+  librarySummary: () => request("GET", "/library"),
+  libraryImport: (limit) => request("POST", "/library/import", { limit }),
+  librarySample: (filters = {}) => request("GET", `/library/puzzles${query({ limit: 12, ...filters })}`),
+  libraryRandom: (filters = {}) => request("GET", `/library/puzzles/random${query(filters)}`),
+  libraryPuzzle: (puzzleId) => request("GET", `/library/puzzles/${encodeURIComponent(puzzleId)}`),
 };

@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     puzzle_crushing_win_pct: float = 85.0
     puzzle_advantage_win_pct: float = 65.0
 
+    # Lichess puzzle database (https://database.lichess.org/#puzzles).
+    # The source may also be a local path to the .csv or .csv.zst file.
+    puzzle_library_source: str = "https://database.lichess.org/lichess_db_puzzle.csv.zst"
+    # Quality floor: net player vote (-100..100) and number of plays.
+    puzzle_library_min_popularity: int = 50
+    puzzle_library_min_plays: int = 50
+    # Rows per insert statement (10 parameters each; Postgres allows 65535).
+    puzzle_library_batch_size: int = 2000
+
     # HTTP clients
     lichess_base_url: str = "https://lichess.org"
     chesscom_base_url: str = "https://api.chess.com"

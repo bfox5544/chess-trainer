@@ -1,4 +1,5 @@
-// Tracks the current import/analysis job across pages and renders its banner.
+// Tracks the current background job (a game import with its analysis, or a
+// load of the Lichess puzzle database) across pages and renders its banner.
 
 import { api } from "./api.js";
 import { append, clear, h, plural } from "./dom.js";
@@ -93,12 +94,34 @@ function failureText(error, what) {
     return "The chess site is limiting requests right now. Wait a few minutes and try again.";
   }
   if (message.startsWith("SourceUnavailable")) {
-    return "The chess site isn't responding right now. Try again in a little while.";
+    return what === "puzzle download"
+      ? "The download from database.lichess.org failed. Puzzles stored before the failure are kept; try again to continue."
+      : "The chess site isn't responding right now. Try again in a little while.";
   }
   return `The ${what} didn't finish. Try again; if it keeps failing, check the worker's log.`;
 }
 
-function describe({ job, analysis, stuck }) {
+function describeLibrary({ job, stuck }) {
+  if (job.status === "failed") return { kind: "error", title: "Loading puzzles failed", text: failureText(job.error, "puzzle download") };
+  if (job.status === "succeeded") {
+    const stored = job.result?.stored ?? 0;
+    return { kind: "done", title: `${stored.toLocaleString()} Lichess puzzles loaded`, text: "Pick a difficulty on the Puzzles page and start solving." };
+  }
+  if (job.status === "queued") {
+    return { kind: "busy", title: "Waiting to load Lichess puzzles…", text: stuck ? null : "It starts once the worker is free." };
+  }
+  const total = job.progress_total;
+  return {
+    kind: "busy",
+    title: `Loading Lichess puzzles: ${job.progress_done.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ""}`,
+    text: "Downloading from database.lichess.org; you can keep using the app.",
+    progress: total ? [job.progress_done, total] : null,
+  };
+}
+
+function describe(state) {
+  if (state.job.kind === "puzzle_library") return describeLibrary(state);
+  const { job, analysis, stuck } = state;
   if (job.status === "failed") return { kind: "error", title: "Import failed", text: failureText(job.error, "import") };
   if (job.status !== "succeeded") {
     return { kind: "busy", title: "Fetching your games…", text: stuck ? null : "This usually takes a few seconds." };

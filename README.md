@@ -26,7 +26,15 @@ uv run chess-trainer-worker                          # in a second terminal
 ```
 
 Then open <http://localhost:8000>: create a user, link an account, import
-games, and watch the analysis run. Or drive the API directly:
+games, and watch the analysis run. For rated practice puzzles, open Puzzles →
+Lichess database and load part of the Lichess puzzle database, or from a
+terminal:
+
+```bash
+uv run chess-trainer-puzzle-library --limit 100000      # streams only what it needs
+```
+
+The API works on its own too:
 
 ```bash
 curl -X POST localhost:8000/users -H 'content-type: application/json' \
@@ -43,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 201 tests; integration tests need `docker compose up -d`
+uv run pytest             # 220 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -64,6 +72,11 @@ uv run ruff check .
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
 | `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
+| `GET /library` | Lichess puzzle library: how many are loaded, and counts per theme |
+| `POST /library/import` | Queue a load of the Lichess puzzle database (`limit`, default 100,000) |
+| `GET /library/puzzles` | A random sample of library puzzles (`rating_min`, `rating_max`, `theme`, `limit` ≤ 50) |
+| `GET /library/puzzles/random` | A random library puzzle (`rating_min`, `rating_max`, `theme`, `exclude`) |
+| `GET /library/puzzles/{id}` | One library puzzle, with the setup move and solution in SAN |
 
 Interactive docs are served at `/docs`.
 
@@ -76,7 +89,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 |---|---|
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
-| Puzzles | Training hub with solved/unsolved tracking; solve by clicking or dragging |
+| Puzzles | Two sources: puzzles from your own mistakes (with solved/unsolved tracking) and rated Lichess puzzles (a shuffled grid filtered by difficulty and theme); solve by clicking or dragging |
 | Stats | Move quality, accuracy by game, and errors by phase, clock, and opening |
 | Import | Link accounts and import; progress shows as a banner on every page |
 
@@ -133,6 +146,7 @@ src/chess_trainer/
 │                    engine, cache, replay, moves, pipeline     (I/O at the edges)
 ├── reports/         game report, weakness report, motif extension point
 ├── puzzles/         builder (pure), validators, generator, service
+├── library/         Lichess puzzle database: parse, present (pure), feed (streaming), store, cli
 ├── jobs/            queue, handlers, worker
 ├── api/             FastAPI app, routes, schemas
 └── web/             static frontend served at /app (no build step)
@@ -291,6 +305,46 @@ they are literally true on the board. Otherwise the reason falls back to the
 line and its net result. A mistake with no material or mate consequence is
 called positional rather than given an invented tactic.
 
+### Lichess puzzle database: a shared library, streamed in
+
+Your own puzzles are scarce: they need analyzed games and a mistake with one
+clearly best reply. The [Lichess puzzle database](https://database.lichess.org/#puzzles)
+(CC0, about 5 million rated and themed puzzles) fills the gap.
+
+- **Separate table.** Library puzzles belong to no user and no game, so they
+  live in `library_puzzles` rather than being squeezed into `puzzles`
+  (whose rows carry a user, game, ply, and engine provenance).
+- **Streamed, never saved to disk.** The ~310 MB `.csv.zst` is downloaded and
+  decompressed on the fly (`library/feed.py`). Importing the first 100,000
+  puzzles reads only the first few megabytes. The file is ordered by puzzle
+  id, which is effectively random, so a prefix is a fair sample of ratings
+  and themes.
+- **Quality floor.** Rows with popularity below 50 (Lichess players' net vote)
+  or fewer than 50 plays are skipped. That keeps about 80% of puzzles and drops
+  disliked ones and ones whose rating hasn't settled. Both thresholds are
+  settings.
+- **Idempotent.** Rows are upserted by Lichess id in batches, each committed,
+  so a dropped download keeps what was stored and a re-import just refreshes
+  ratings and play counts.
+- **Cheap structural checks at import, full legality when served.** Replaying
+  every line for 5 million rows would dominate import time for data Lichess
+  has already validated. `library/present.py` replays a puzzle when it is
+  served and turns it into the trainer's format (setup move + steps in SAN).
+- **Random selection without sorting.** Each row gets a uniform `random_key`
+  (indexed); a random puzzle is the first match at or after a random point,
+  wrapping once. `ORDER BY random()` would sort every matching row on each
+  request.
+- **Difficulty from your games.** The hub takes the median of your rating
+  over recent games and offers a ±100 window around it, 300 below it, or
+  300 above it. Chess.com and Lichess ratings aren't on the same scale, so
+  this is a starting point, not a calibration.
+- **Themes are hidden until you finish.** "Fork" or "mate in 2" gives the
+  answer away, so the trainer shows them only after the puzzle is done (as
+  Lichess does).
+
+The import runs as a background job (started from the Puzzles page) or from
+the command line; both call `library/store.import_library`.
+
 ### One time-class formula for both platforms
 
 Lichess and Chess.com draw the bullet/blitz/rapid lines differently. Every
@@ -335,6 +389,8 @@ threshold is `min(30s, 10% of base time)`, both configurable.
 | `position_evals` | The cache: (position, engine config, line count) → depth and lines |
 | `move_analyses` | One row per move: evals, win %, classification, phase, clock |
 | `puzzles` | Puzzle candidates with full solution, status, and provenance |
+| `library_puzzles` | Puzzles from the Lichess puzzle database, shared by all users |
+| `library_themes` | Puzzle count per theme, refreshed after each library import |
 | `jobs` | Background jobs; also the queue |
 
 Rows in `move_analyses` and `puzzles` are upserted by `(game_id, ply)`.
@@ -378,6 +434,11 @@ Not built, but the current design was shaped so these fit without rework:
 - The frontend is checked by scripted browser runs, not by an automated test
   suite; the backend only tests that its files are served.
 - Puzzle attempts are saved only in the browser, not on the server.
+- The worker runs one job at a time, so loading the full puzzle database
+  (several minutes) delays game analysis queued behind it. Run a second
+  worker process if that matters.
+- Library puzzle difficulty is a fixed rating window; there is no puzzle
+  rating for the user that moves with results yet.
 - Explanations cover material, forks and mates. They don't yet name pins,
   skewers, discovered attacks or trapped pieces (a trap shows up as "after the
   reply …, material can't be held"), and positional mistakes get a generic

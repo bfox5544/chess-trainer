@@ -3,7 +3,7 @@
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from chess_trainer.db.base import Base, str_enum, utcnow
@@ -246,3 +246,44 @@ class Puzzle(Base):
     themes: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+
+
+class LibraryPuzzle(Base):
+    """A puzzle from the Lichess puzzle database (database.lichess.org).
+
+    Shared by every user and unrelated to their games, so it lives apart from
+    `puzzles`. Columns mirror the published CSV. `fen` is the position
+    *before* the opponent's move `moves[0]`; the solver answers with
+    `moves[1]`, and the line alternates from there.
+    """
+
+    __tablename__ = "library_puzzles"
+    __table_args__ = (sa.Index("ix_library_puzzles_themes", "themes", postgresql_using="gin"),)
+
+    id: Mapped[str] = mapped_column(sa.String(10), primary_key=True)  # Lichess PuzzleId
+    fen: Mapped[str] = mapped_column(sa.String(100))
+    moves: Mapped[list[str]] = mapped_column(ARRAY(sa.String(5)))
+    rating: Mapped[int] = mapped_column(index=True)
+    rating_deviation: Mapped[int]
+    popularity: Mapped[int]  # -100..100, from Lichess players' up/down votes
+    nb_plays: Mapped[int]
+    themes: Mapped[list[str]] = mapped_column(ARRAY(sa.String(40)))
+    game_url: Mapped[str] = mapped_column(sa.String(200))
+    opening_tags: Mapped[list[str]] = mapped_column(ARRAY(sa.String(100)))
+    # Uniform in [0, 1). "A random puzzle" is the first row at or after a
+    # random point in this index, which stays fast on millions of rows where
+    # ORDER BY random() would sort them all.
+    random_key: Mapped[float] = mapped_column(sa.Float, server_default=sa.func.random(), index=True)
+    imported_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+
+
+class LibraryTheme(Base):
+    """How many library puzzles carry each theme. Recomputed after every
+    import so the theme filter never has to scan millions of rows."""
+
+    __tablename__ = "library_themes"
+
+    theme: Mapped[str] = mapped_column(sa.String(40), primary_key=True)
+    count: Mapped[int]

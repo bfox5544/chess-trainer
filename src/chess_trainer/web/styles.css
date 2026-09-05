@@ -466,6 +466,11 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .puzzle-card-body { padding: var(--space-3); display: grid; gap: 4px; }
 .puzzle-card-title { display: flex; align-items: center; gap: 6px; font-weight: 650; }
 .footnote { margin-top: var(--space-5); }
+.source-switch { margin-bottom: var(--space-4); }
+.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+.library-loader { display: grid; justify-items: center; gap: var(--space-2); }
+.library-loader .field { align-items: center; }
+.library-loader .segmented { flex-wrap: wrap; justify-content: center; }
 
 .trainer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .trainer-nav { display: flex; gap: 2px; }

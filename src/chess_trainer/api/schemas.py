@@ -220,3 +220,47 @@ class PuzzleDetailOut(PuzzleOut):
     explanation: list[ReasonOut] = Field(
         default_factory=list, description="Why the game move (`played_san`) was a mistake."
     )
+
+
+# --- Puzzle library (Lichess puzzle database) ----------------------------------
+
+
+class ThemeCountOut(ApiModel):
+    theme: str
+    count: int
+
+
+class LibrarySummaryOut(BaseModel):
+    total: int
+    themes: list[ThemeCountOut]
+
+
+class LibraryImportRequest(BaseModel):
+    limit: int | None = Field(
+        default=100_000,
+        ge=1,
+        description="Stop after storing this many puzzles. Null loads the whole database "
+        "(about 5 million puzzles; several minutes and a few GB of disk).",
+    )
+
+
+class LibraryStepOut(BaseModel):
+    uci: str
+    san: str
+    by: str
+
+
+class LibraryPuzzleOut(BaseModel):
+    id: str
+    fen: str = Field(description="Position before the opponent's setup move.")
+    setup: LibraryStepOut = Field(description="The opponent's move that sets up the puzzle.")
+    start_fen: str = Field(description="Position the solver faces.")
+    user_color: Color
+    solution: list[LibraryStepOut]
+    rating: int
+    rating_deviation: int
+    popularity: int
+    nb_plays: int
+    themes: list[str]
+    game_url: str
+    opening_tags: list[str]

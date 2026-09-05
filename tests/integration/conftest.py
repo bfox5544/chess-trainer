@@ -1,11 +1,14 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from chess_trainer.accounts.service import create_user, link_account
 from chess_trainer.analysis.openings import load_opening_book
-from chess_trainer.config import Settings
+from chess_trainer.api.app import create_app
+from chess_trainer.api.deps import get_session
+from chess_trainer.config import Settings, get_settings
 from chess_trainer.db.enums import Platform
 from chess_trainer.db.models import ChessAccount, Game
 from chess_trainer.ingestion.service import import_games
@@ -46,3 +49,12 @@ def job_context(settings: Settings, engine: FakeEngine, scholars_source: StubSou
         get_engine=lambda: engine,
         book=load_opening_book(),
     )
+
+
+@pytest.fixture
+def client(session: Session, settings: Settings) -> Iterator[TestClient]:
+    app = create_app()
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_settings] = lambda: settings
+    with TestClient(app) as test_client:
+        yield test_client
