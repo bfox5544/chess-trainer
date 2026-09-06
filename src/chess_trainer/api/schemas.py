@@ -183,6 +183,41 @@ class WeaknessReportOut(ApiModel):
     by_motif: dict[str, int]
 
 
+class LineStepOut(ApiModel):
+    uci: str
+    san: str
+
+
+class OpeningLineOut(ApiModel):
+    name: str | None = Field(description="Opening-book name of the line's final position.")
+    steps: list[LineStepOut]
+
+
+class GameErrorOut(ApiModel):
+    ply: int
+    move_number: int
+    san: str
+    best_move_san: str | None
+    classification: Classification
+    phase: Phase
+    win_pct_loss: float
+
+
+class OpeningGameOut(ApiModel):
+    game: GameOut
+    user_color: Color
+    outcome: str | None
+    stats: StatsOut | None
+    errors: list[GameErrorOut]
+
+
+class OpeningExplorerOut(ApiModel):
+    family: str
+    line: OpeningLineOut
+    stats: StatsOut
+    games: list[OpeningGameOut]
+
+
 # --- Puzzles -----------------------------------------------------------------
 
 

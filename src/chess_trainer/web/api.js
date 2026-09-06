@@ -60,6 +60,7 @@ export const api = {
   userGames: (userId, filters = {}) =>
     request("GET", `/users/${userId}/games${query({ limit: 100, ...filters })}`),
   gameAnalysis: (gameId) => request("GET", `/games/${gameId}/analysis`),
+  opening: (userId, filters) => request("GET", `/users/${userId}/opening${query(filters)}`),
   report: (userId, filters = {}) => request("GET", `/users/${userId}/report${query(filters)}`),
   puzzles: (userId, filters = {}) =>
     request("GET", `/users/${userId}/puzzles${query({ limit: 100, ...filters })}`),

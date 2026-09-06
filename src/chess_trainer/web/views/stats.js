@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { meter, stackedBar, trendChart } from "../charts.js";
 import { append, clear, formatDate, h, plural, titleCase } from "../dom.js";
 import { buildInsights } from "../insights.js";
+import { openingHref } from "./opening.js";
 import { button, emptyState, opponentOf, pageHeader, panel, select, statTile } from "../ui.js";
 
 const TIME_CLASSES = ["bullet", "blitz", "rapid", "classical", "correspondence"];
@@ -22,7 +23,7 @@ export async function renderStats(container, context) {
     ]);
     const analyzed = games.filter((row) => row.stats && (!filters.time_class || row.game.time_class === filters.time_class));
     clear(body);
-    append(body, statsBody(report, analyzed, Boolean(filters.time_class || filters.account_id)));
+    append(body, statsBody(report, analyzed, filters));
   };
   const change = (key) => (value) => {
     filters[key] = value;
@@ -44,7 +45,8 @@ export async function renderStats(container, context) {
   await load();
 }
 
-function statsBody(report, games, filtered) {
+function statsBody(report, games, filters) {
+  const filtered = Boolean(filters.time_class || filters.account_id);
   if (!report.games_analyzed) {
     return emptyState({
       iconName: "stats",
@@ -97,7 +99,11 @@ function statsBody(report, games, filtered) {
         h("p", { class: "muted small" }, "Low on time means under 30 seconds, or under 10% of the starting time in faster games."),
       ),
     ),
-    panel("By opening", bucketTable("Opening", report.by_opening, (key) => key, true)),
+    panel(
+      "By opening",
+      bucketTable("Opening", report.by_opening, (key) => key, true, (key) => openingHref(key, filters)),
+      h("p", { class: "muted small" }, "Click an opening to see its line and go through your games in it."),
+    ),
     Object.keys(report.by_motif).length
       ? panel(
           "Tactical themes in your puzzles",
@@ -126,7 +132,7 @@ function accuracyTrend(games) {
   ];
 }
 
-function bucketTable(firstColumn, buckets, labelOf, showMoves = false) {
+function bucketTable(firstColumn, buckets, labelOf, showMoves = false, hrefOf = null) {
   if (!buckets.length) return h("p", { class: "muted" }, "Nothing to show yet.");
   const worst = Math.max(...buckets.map((b) => b.stats.errors_per_100_moves), 1);
   return h(
@@ -134,7 +140,7 @@ function bucketTable(firstColumn, buckets, labelOf, showMoves = false) {
     { class: "table-scroll" },
     h(
       "table",
-      { class: "table" },
+      { class: `table${hrefOf ? " table-rows" : ""}` },
       h(
         "thead",
         {},
@@ -151,17 +157,19 @@ function bucketTable(firstColumn, buckets, labelOf, showMoves = false) {
       h(
         "tbody",
         {},
-        buckets.map(({ key, stats }) =>
-          h(
+        buckets.map(({ key, stats }) => {
+          const href = hrefOf ? hrefOf(key) : null;
+          const open = () => (location.hash = href);
+          return h(
             "tr",
-            {},
-            h("td", {}, labelOf(key)),
+            href ? { tabindex: 0, onclick: open, onkeydown: (event) => event.key === "Enter" && open() } : {},
+            h("td", {}, href ? h("a", { href }, labelOf(key)) : labelOf(key)),
             h("td", { class: "num" }, stats.moves),
             h("td", { class: "num" }, `${stats.accuracy}%`),
             showMoves ? h("td", { class: "num hide-sm" }, stats.blunders) : null,
             h("td", { class: "meter-cell" }, meter(stats.errors_per_100_moves, worst)),
-          ),
-        ),
+          );
+        }),
       ),
     ),
   );

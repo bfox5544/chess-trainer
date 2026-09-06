@@ -11,6 +11,7 @@ import { renderGame } from "./views/game.js";
 import { renderGames } from "./views/games.js";
 import { renderImport, renderWelcome } from "./views/import.js";
 import { renderLibraryPuzzle } from "./views/library-puzzle.js";
+import { renderOpening } from "./views/opening.js";
 import { renderPuzzle } from "./views/puzzle.js";
 import { renderPuzzles } from "./views/puzzles.js";
 import { renderStats } from "./views/stats.js";
@@ -27,7 +28,7 @@ const ROUTES = {
   games: (el, ctx, id, extra) => (id ? renderGame(el, ctx, id, extra) : renderGames(el, ctx)),
   puzzles: (el, ctx, id, extra) =>
     id === "lichess" && extra ? renderLibraryPuzzle(el, ctx, extra) : id ? renderPuzzle(el, ctx, id) : renderPuzzles(el, ctx),
-  stats: renderStats,
+  stats: (el, ctx, id) => (id === "opening" ? renderOpening(el, ctx) : renderStats(el, ctx)),
   report: renderStats, // old link
   import: renderImport,
 };

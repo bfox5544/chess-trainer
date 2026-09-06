@@ -109,7 +109,7 @@ function gamesTable(rows, accounts) {
   );
 }
 
-function errorCounts(stats) {
+export function errorCounts(stats) {
   const count = (kind, value) =>
     h(
       "span",

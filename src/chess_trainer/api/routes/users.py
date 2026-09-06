@@ -9,6 +9,7 @@ from chess_trainer.api.deps import SessionDep, SettingsDep, UserDep
 from chess_trainer.api.schemas import (
     AccountCreate,
     AccountOut,
+    OpeningExplorerOut,
     PuzzleOut,
     UserCreate,
     UserGameOut,
@@ -18,6 +19,7 @@ from chess_trainer.api.schemas import (
 from chess_trainer.db.enums import Classification, Phase, PuzzleOutcome, TimeClass
 from chess_trainer.db.models import ChessAccount, Puzzle, User
 from chess_trainer.puzzles.service import PuzzleFilters, list_puzzles
+from chess_trainer.reports.opening_explorer import OpeningExplorer, build_opening_explorer
 from chess_trainer.reports.user_games import UserGame, list_user_games
 from chess_trainer.reports.weakness import WeaknessFilters, WeaknessReport, build_weakness_report
 
@@ -76,6 +78,26 @@ def weakness_report(
     """Where the user loses winning chances, across all linked accounts."""
     filters = WeaknessFilters(account_id=account_id, time_class=time_class, since=since)
     return build_weakness_report(session, user.id, filters, settings)
+
+
+@router.get("/{user_id}/opening", response_model=OpeningExplorerOut)
+def opening(
+    user: UserDep,
+    session: SessionDep,
+    family: Annotated[str, Query(min_length=1, max_length=200)],
+    account_id: int | None = None,
+    time_class: TimeClass | None = None,
+    since: datetime | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> OpeningExplorer:
+    """One opening family as the Stats page names it ("Unknown" for games
+    with no opening): its most common entry line among the user's games, and
+    the user's analyzed games in it with the plies where they went wrong."""
+    filters = WeaknessFilters(account_id=account_id, time_class=time_class, since=since)
+    explorer = build_opening_explorer(session, user.id, family, filters, limit)
+    if explorer is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no analyzed games in {family!r}")
+    return explorer
 
 
 @router.get("/{user_id}/puzzles", response_model=list[PuzzleOut])

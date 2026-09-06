@@ -212,3 +212,24 @@ def test_moves_and_puzzles_carry_explanations(
     (listed,) = client.get(f"/users/{user_id}/puzzles").json()
     puzzle = client.get(f"/puzzles/{listed['id']}").json()
     assert [r["code"] for r in puzzle["explanation"]] == ["allows_mate"]
+
+
+def test_opening_explorer(client: TestClient, user_id: int, analyzed: int) -> None:
+    explorer = client.get(f"/users/{user_id}/opening", params={"family": "Bishop's Opening"}).json()
+    assert explorer["family"] == "Bishop's Opening"
+    assert [step["san"] for step in explorer["line"]["steps"]] == ["e4", "e5", "Bc4"]
+    assert explorer["line"]["name"] == "Bishop's Opening"
+    assert explorer["stats"]["blunders"] == 1
+    (game,) = explorer["games"]
+    assert game["user_color"] == "black" and game["outcome"] == "loss"
+    assert [
+        (e["ply"], e["san"], e["best_move_san"], e["classification"]) for e in game["errors"]
+    ] == [(5, "Nf6", "g6", "blunder")]
+
+    missing = client.get(f"/users/{user_id}/opening", params={"family": "Sicilian Defense"})
+    assert missing.status_code == 404
+    filtered = client.get(
+        f"/users/{user_id}/opening",
+        params={"family": "Bishop's Opening", "time_class": "classical"},
+    )
+    assert filtered.status_code == 404

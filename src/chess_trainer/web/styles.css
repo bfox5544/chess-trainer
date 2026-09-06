@@ -454,6 +454,19 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .move.current { background: var(--ivory); color: var(--ink); }
 .move-mark { font-size: 0.8rem; font-weight: 800; }
 
+/* Opening explorer */
+.opening-explorer .player, .opening-explorer .controls { padding-left: 0; }
+.opening-explorer .analysis-side > * { min-width: 0; } /* long variation names truncate instead of widening the column */
+.opening-caption { gap: var(--space-2); }
+.opening-caption .result { margin-left: auto; }
+.line-moves { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: var(--space-2); font-variant-numeric: tabular-nums; }
+.line-moves .move-number { padding-left: 0; }
+.error-jumps { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
+.opening-explorer .coach-meta { flex-wrap: wrap; }
+.opening-explorer .coach-meta .btn-ghost:last-child { margin-left: auto; }
+button.game-row { width: calc(100% + 16px); border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.game-row.selected { background: var(--surface-3); }
+
 /* Puzzles */
 .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .puzzle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-4); }

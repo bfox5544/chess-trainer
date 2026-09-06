@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 220 tests; integration tests need `docker compose up -d`
+uv run pytest             # 227 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -70,6 +70,7 @@ uv run ruff check .
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
+| `GET /users/{id}/opening?family=` | One opening: its most common entry line in your games, and your analyzed games in it with the plies where you went wrong (same filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
 | `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
 | `GET /library` | Lichess puzzle library: how many are loaded, and counts per theme |
@@ -90,7 +91,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
 | Puzzles | Two sources: puzzles from your own mistakes (with solved/unsolved tracking) and rated Lichess puzzles (a shuffled grid filtered by difficulty and theme); solve by clicking or dragging |
-| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening |
+| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played |
 | Import | Link accounts and import; progress shows as a banner on every page |
 
 **Design system.** One stylesheet (`styles.css`) built on tokens: an ebony
@@ -144,7 +145,7 @@ src/chess_trainer/
 ├── ingestion/       GameSource protocol, Lichess + Chess.com clients, retrying HTTP, normalization
 ├── analysis/        winprob, classify, phase, clock, openings  (pure)
 │                    engine, cache, replay, moves, pipeline     (I/O at the edges)
-├── reports/         game report, weakness report, motif extension point
+├── reports/         game report, weakness report, opening explorer, motif extension point
 ├── puzzles/         builder (pure), validators, generator, service
 ├── library/         Lichess puzzle database: parse, present (pure), feed (streaming), store, cli
 ├── jobs/            queue, handlers, worker
@@ -358,6 +359,13 @@ game is matched by position against the bundled Lichess openings dataset
 (CC0, `data/openings.tsv`), so both platforms get identical names, and
 `opening_ply` records where the player left theory. Rebuild the file with
 `scripts/build_openings.py`.
+
+The dataset stores positions, not move orders, so the line shown for an
+opening on the Stats page comes from your own games. In each game it takes the
+moves up to the first position named exactly after the family (1.e4 c6 for
+the Caro-Kann), falling back to the first position of that family, and then
+shows the most common of those lines. Transpositions then show up the way you
+actually play them.
 
 ### Time pressure scales with the time control
 

@@ -19,7 +19,7 @@ function whitePctBefore(move) {
 }
 
 /** The engine's line from a position, as SAN, for display. */
-function lineToSan(fen, ucis, limit = 6) {
+export function lineToSan(fen, ucis, limit = 6) {
   const chess = new Chess(fen);
   const sans = [];
   for (const uci of ucis.slice(0, limit)) {
@@ -274,7 +274,7 @@ export async function renderGame(container, context, gameId, startPly) {
   return () => document.removeEventListener("keydown", onKey);
 }
 
-function arrowOf(uci) {
+export function arrowOf(uci) {
   return { from: uci.slice(0, 2), to: uci.slice(2, 4) };
 }
 
@@ -320,7 +320,7 @@ function sideSummary(name, color, stats, userColor) {
   );
 }
 
-function moveList(moves, moveCells, show) {
+export function moveList(moves, moveCells, show) {
   const rows = [];
   for (let i = 0; i < moves.length; i += 2) {
     rows.push(
