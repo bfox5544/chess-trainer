@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 227 tests; integration tests need `docker compose up -d`
+uv run pytest             # 233 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -70,6 +70,7 @@ uv run ruff check .
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
+| `GET /users/{id}/repeated-mistakes` | Positions where you went wrong in at least `min_games` (default 2) games, most repeated first, with the moves you played, the better move and the games (same filters, plus `family`) |
 | `GET /users/{id}/opening?family=` | One opening: its most common entry line in your games, and your analyzed games in it with the plies where you went wrong (same filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
 | `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
@@ -91,7 +92,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
 | Puzzles | Two sources: puzzles from your own mistakes (with solved/unsolved tracking) and rated Lichess puzzles (a shuffled grid filtered by difficulty and theme); solve by clicking or dragging |
-| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played |
+| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one |
 | Import | Link accounts and import; progress shows as a banner on every page |
 
 **Design system.** One stylesheet (`styles.css`) built on tokens: an ebony
@@ -145,7 +146,7 @@ src/chess_trainer/
 ├── ingestion/       GameSource protocol, Lichess + Chess.com clients, retrying HTTP, normalization
 ├── analysis/        winprob, classify, phase, clock, openings  (pure)
 │                    engine, cache, replay, moves, pipeline     (I/O at the edges)
-├── reports/         game report, weakness report, opening explorer, motif extension point
+├── reports/         game report, weakness report, opening explorer, repeated mistakes, motif extension point
 ├── puzzles/         builder (pure), validators, generator, service
 ├── library/         Lichess puzzle database: parse, present (pure), feed (streaming), store, cli
 ├── jobs/            queue, handlers, worker
@@ -366,6 +367,17 @@ moves up to the first position named exactly after the family (1.e4 c6 for
 the Caro-Kann), falling back to the first position of that family, and then
 shows the most common of those lines. Transpositions then show up the way you
 actually play them.
+
+### Repeated mistakes are grouped by position
+
+A habit is the same wrong move in the same spot, so errors are grouped by the
+position they were made in (FEN without the move counters), not by the move
+or the opening name. That catches the same mistake reached by different move
+orders, and under different opening names (a position that is "Petrov's
+Defense" in some games and "Italian Game" in others). A position counts once
+per game, so shuffling back and forth within one game is not a habit; a group
+needs two games. The better move shown is the engine's most common choice
+across the games, and the explanation is the newest game's.
 
 ### Time pressure scales with the time control
 

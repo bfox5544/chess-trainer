@@ -101,7 +101,7 @@ def by_phase(facts: list[MoveFact]) -> list[Bucket]:
     return sorted(aggregate(facts, phase_key), key=lambda b: order.index(b.key))
 
 
-def _user_moves(user_id: int, filters: WeaknessFilters):  # type: ignore[no-untyped-def]
+def user_moves_query(user_id: int, filters: WeaknessFilters):  # type: ignore[no-untyped-def]
     """FROM/WHERE shared by the queries: moves the user played, by color."""
     conditions = [ChessAccount.user_id == user_id, MoveAnalysis.is_forced.is_(False)]
     if filters.account_id is not None:
@@ -127,7 +127,7 @@ def load_move_facts(
     session: Session, user_id: int, filters: WeaknessFilters, settings: Settings
 ) -> list[MoveFact]:
     """The user's own, non-forced moves from analyzed games."""
-    stmt = _user_moves(user_id, filters).add_columns(
+    stmt = user_moves_query(user_id, filters).add_columns(
         MoveAnalysis.classification,
         MoveAnalysis.win_pct_loss,
         MoveAnalysis.phase,
@@ -150,7 +150,7 @@ def load_move_facts(
 
 
 def count_games(session: Session, user_id: int, filters: WeaknessFilters) -> int:
-    stmt = _user_moves(user_id, filters).add_columns(func.count(Game.id.distinct()))
+    stmt = user_moves_query(user_id, filters).add_columns(func.count(Game.id.distinct()))
     return session.execute(stmt).scalar_one()
 
 

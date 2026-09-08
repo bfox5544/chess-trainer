@@ -14,6 +14,7 @@ import { renderLibraryPuzzle } from "./views/library-puzzle.js";
 import { renderOpening } from "./views/opening.js";
 import { renderPuzzle } from "./views/puzzle.js";
 import { renderPuzzles } from "./views/puzzles.js";
+import { renderRepeated } from "./views/repeated.js";
 import { renderStats } from "./views/stats.js";
 
 const USER_KEY = "chessTrainer.userId";
@@ -28,7 +29,7 @@ const ROUTES = {
   games: (el, ctx, id, extra) => (id ? renderGame(el, ctx, id, extra) : renderGames(el, ctx)),
   puzzles: (el, ctx, id, extra) =>
     id === "lichess" && extra ? renderLibraryPuzzle(el, ctx, extra) : id ? renderPuzzle(el, ctx, id) : renderPuzzles(el, ctx),
-  stats: (el, ctx, id) => (id === "opening" ? renderOpening(el, ctx) : renderStats(el, ctx)),
+  stats: (el, ctx, id) => (id === "opening" ? renderOpening(el, ctx) : id === "repeated" ? renderRepeated(el, ctx) : renderStats(el, ctx)),
   report: renderStats, // old link
   import: renderImport,
 };
@@ -166,7 +167,7 @@ const REFRESH_ON_JOB = ["", "games", "puzzles", "stats", "report", "import"];
 
 jobs.subscribe((state, event) => {
   renderJobBanner(banner);
-  const onListPage = REFRESH_ON_JOB.includes(currentSection()) && !location.hash.match(/^#\/(games|puzzles)\/[^?]/);
+  const onListPage = REFRESH_ON_JOB.includes(currentSection()) && !location.hash.match(/^#\/(games|puzzles|stats)\/[^?]/);
   if (event === "finished" && context.user && onListPage) route();
 });
 

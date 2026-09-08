@@ -218,6 +218,40 @@ class OpeningExplorerOut(ApiModel):
     games: list[OpeningGameOut]
 
 
+class PlayedMoveOut(ApiModel):
+    san: str
+    uci: str
+    count: int = Field(description="Games in which this move was played here.")
+
+
+class RepeatedOccurrenceOut(ApiModel):
+    game_id: int
+    played_at: datetime | None
+    opening_family: str | None
+    ply: int
+    san: str
+    classification: Classification
+    win_pct_loss: float
+
+
+class RepeatedMistakeOut(ApiModel):
+    key: str = Field(description="The position: FEN without the move counters.")
+    fen: str
+    color: Color
+    move_number: int
+    ply: int
+    games: int
+    best_move_san: str | None
+    best_move_uci: str | None
+    worst: Classification
+    average_win_pct_loss: float
+    played: list[PlayedMoveOut]
+    occurrences: list[RepeatedOccurrenceOut] = Field(description="One per game, newest first.")
+    families: list[str]
+    path: list[str] = Field(description="SAN moves leading here; empty past move 12.")
+    explanation: list[ReasonOut]
+
+
 # --- Puzzles -----------------------------------------------------------------
 
 

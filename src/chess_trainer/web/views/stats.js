@@ -5,6 +5,7 @@ import { meter, stackedBar, trendChart } from "../charts.js";
 import { append, clear, formatDate, h, plural, titleCase } from "../dom.js";
 import { buildInsights } from "../insights.js";
 import { openingHref } from "./opening.js";
+import { repeatedHref, repeatedRow } from "./repeated.js";
 import { button, emptyState, opponentOf, pageHeader, panel, select, statTile } from "../ui.js";
 
 const TIME_CLASSES = ["bullet", "blitz", "rapid", "classical", "correspondence"];
@@ -17,13 +18,14 @@ export async function renderStats(container, context) {
   const filters = { time_class: "", account_id: "" };
 
   const load = async () => {
-    const [report, games] = await Promise.all([
+    const [report, repeated, games] = await Promise.all([
       api.report(user.id, filters),
+      api.repeatedMistakes(user.id, { ...filters, limit: 5 }),
       api.userGames(user.id, { account_id: filters.account_id, limit: 200 }),
     ]);
     const analyzed = games.filter((row) => row.stats && (!filters.time_class || row.game.time_class === filters.time_class));
     clear(body);
-    append(body, statsBody(report, analyzed, filters));
+    append(body, statsBody(report, analyzed, repeated, filters));
   };
   const change = (key) => (value) => {
     filters[key] = value;
@@ -45,7 +47,7 @@ export async function renderStats(container, context) {
   await load();
 }
 
-function statsBody(report, games, filters) {
+function statsBody(report, games, repeated, filters) {
   const filtered = Boolean(filters.time_class || filters.account_id);
   if (!report.games_analyzed) {
     return emptyState({
@@ -71,6 +73,14 @@ function statsBody(report, games, filters) {
       ? panel(
           "Key findings",
           h("ul", { class: "insights" }, insights.map((item) => h("li", { class: "insight" }, h("div", {}, h("strong", {}, item.title), h("p", { class: "muted" }, item.text))))),
+        )
+      : null,
+    repeated.length
+      ? panel(
+          "Mistakes you repeat",
+          h("p", { class: "muted small" }, "Positions where you went wrong in more than one game, most repeated first."),
+          h("ul", { class: "game-list" }, repeated.map((group) => h("li", {}, repeatedRow(group, { href: repeatedHref(filters, group.key) })))),
+          button("See them on the board", { icon: "arrow", href: repeatedHref(filters) }),
         )
       : null,
     h(

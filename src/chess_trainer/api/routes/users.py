@@ -11,6 +11,7 @@ from chess_trainer.api.schemas import (
     AccountOut,
     OpeningExplorerOut,
     PuzzleOut,
+    RepeatedMistakeOut,
     UserCreate,
     UserGameOut,
     UserOut,
@@ -20,6 +21,7 @@ from chess_trainer.db.enums import Classification, Phase, PuzzleOutcome, TimeCla
 from chess_trainer.db.models import ChessAccount, Puzzle, User
 from chess_trainer.puzzles.service import PuzzleFilters, list_puzzles
 from chess_trainer.reports.opening_explorer import OpeningExplorer, build_opening_explorer
+from chess_trainer.reports.repeated import RepeatedMistake, build_repeated_mistakes
 from chess_trainer.reports.user_games import UserGame, list_user_games
 from chess_trainer.reports.weakness import WeaknessFilters, WeaknessReport, build_weakness_report
 
@@ -98,6 +100,24 @@ def opening(
     if explorer is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"no analyzed games in {family!r}")
     return explorer
+
+
+@router.get("/{user_id}/repeated-mistakes", response_model=list[RepeatedMistakeOut])
+def repeated_mistakes(
+    user: UserDep,
+    session: SessionDep,
+    family: Annotated[str | None, Query(max_length=200)] = None,
+    account_id: int | None = None,
+    time_class: TimeClass | None = None,
+    since: datetime | None = None,
+    min_games: Annotated[int, Query(ge=2, le=20)] = 2,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> list[RepeatedMistake]:
+    """Positions where the user went wrong in at least `min_games` games,
+    grouped across move orders and opening names; most repeated first.
+    `family` keeps only that opening family's games."""
+    filters = WeaknessFilters(account_id=account_id, time_class=time_class, since=since)
+    return build_repeated_mistakes(session, user.id, filters, family, min_games, limit)
 
 
 @router.get("/{user_id}/puzzles", response_model=list[PuzzleOut])

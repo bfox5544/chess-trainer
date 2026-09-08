@@ -8,6 +8,7 @@ import { MOVE_KINDS, button, chip, colorDot, emptyState, kindBadge, moveKind, no
 import { Chess } from "../vendor/chess.js";
 import { arrowOf, lineToSan, moveList } from "./game.js";
 import { errorCounts } from "./games.js";
+import { repeatedArrows, repeatedCoach, repeatedRow } from "./repeated.js";
 
 const squaresOf = (uci) => [uci.slice(0, 2), uci.slice(2, 4)];
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -36,9 +37,10 @@ export async function renderOpening(container, context) {
     location.hash = "#/stats";
     return;
   }
-  let explorer;
+  const filters = { family, time_class: timeClass, account_id: accountId };
+  let explorer, repeated;
   try {
-    explorer = await api.opening(context.user.id, { family, time_class: timeClass, account_id: accountId });
+    [explorer, repeated] = await Promise.all([api.opening(context.user.id, filters), api.repeatedMistakes(context.user.id, filters)]);
   } catch (error) {
     if (error.status !== 404) throw error;
     append(
@@ -58,10 +60,13 @@ export async function renderOpening(container, context) {
   const gameMoves = h("div");
   const lineCells = [];
   const gameRows = [];
+  const repeatRows = [];
   const controls = h("div", { class: "controls" });
 
-  // mode "line": stepping through the opening line; mode "game": one of your games.
+  // mode "line": stepping through the opening line; "game": one of your games;
+  // "repeat": a position where you went wrong in several games.
   let mode = "line";
+  let repeatIndex = null; // index into repeated
   let current = line.steps.length - 1;
   let selected = null; // index into games
   let report = null; // that game's full analysis
@@ -86,6 +91,14 @@ export async function renderOpening(container, context) {
   };
 
   function draw() {
+    if (mode === "repeat") {
+      const group = repeated[repeatIndex];
+      board.setPosition(group.fen);
+      board.setMarks({});
+      board.setBadge(null);
+      board.setArrows(repeatedArrows(group));
+      return;
+    }
     const move = mode === "game" ? moves()[current] : null;
     if (comparing && move) {
       board.setPosition(move.fen_before);
@@ -107,6 +120,7 @@ export async function renderOpening(container, context) {
   }
 
   function show(index, { compare = false } = {}) {
+    if (mode === "repeat") return;
     if (mode === "game" && !report) return;
     current = Math.max(-1, Math.min(last(), index));
     comparing = compare && isMyError(current) && Boolean(moves()[current].best_move_uci);
@@ -151,6 +165,7 @@ export async function renderOpening(container, context) {
     moveCells = [];
     clear(gameMoves);
     gameRows.forEach((row) => row.classList.remove("selected"));
+    repeatRows.forEach((row) => row.classList.remove("selected"));
     clear(caption).append(h("strong", {}, line.name || family));
     setGameInUrl(null);
     show(index);
@@ -158,8 +173,9 @@ export async function renderOpening(container, context) {
 
   // --- Your games -------------------------------------------------------------
 
-  async function openGame(index) {
+  async function openGame(index, ply = null) {
     mode = "game";
+    repeatRows.forEach((row) => row.classList.remove("selected"));
     selected = index;
     report = null;
     moveCells = [];
@@ -182,6 +198,8 @@ export async function renderOpening(container, context) {
     if (token !== loadToken) return;
     report = loaded;
     append(gameMoves, panel("Moves", moveList(report.moves, moveCells, (i) => show(i))));
+    const wanted = ply === null ? -1 : report.moves.findIndex((m) => m.ply === ply);
+    if (wanted >= 0) return show(wanted, { compare: true });
     // Start at your first error; a clean game starts where it left the book.
     const first = report.moves.findIndex((m) => errorPlies().has(m.ply));
     if (first >= 0) show(first, { compare: true });
@@ -206,6 +224,49 @@ export async function renderOpening(container, context) {
         h("div", { class: "game-row-stats" }, resultPill(entry.outcome), entry.stats ? errorCounts(entry.stats) : null),
       );
       gameRows.push(row);
+      return h("li", {}, row);
+    }),
+  );
+
+  // --- Mistakes you repeat in this opening ----------------------------------
+
+  function showRepeat(index) {
+    mode = "repeat";
+    repeatIndex = (index + repeated.length) % repeated.length;
+    selected = null;
+    report = null;
+    moveCells = [];
+    loadToken += 1;
+    const group = repeated[repeatIndex];
+    clear(gameMoves);
+    gameRows.forEach((row) => row.classList.remove("selected"));
+    repeatRows.forEach((row, i) => row.classList.toggle("selected", i === repeatIndex));
+    lineCells.forEach((cell) => cell.classList.remove("current"));
+    setGameInUrl(null);
+    if (board.orientation !== group.color) board.setOrientation(group.color);
+    clear(caption).append(colorDot(group.color), h("strong", {}, `${titleCase(group.color)} to move`), h("span", { class: "muted" }, `Repeated mistake ${repeatIndex + 1} of ${repeated.length}`));
+    draw();
+    const gameLink = (occurrence) => {
+      const gameIndex = games.findIndex((g) => g.game.id === occurrence.game_id);
+      if (gameIndex < 0) return { href: `#/games/${occurrence.game_id}/${occurrence.ply}` };
+      return {
+        href: "#",
+        onclick: (event) => {
+          event.preventDefault();
+          openGame(gameIndex, occurrence.ply);
+        },
+      };
+    };
+    clear(coach).append(...repeatedCoach(group, { gameLink }).filter(Boolean));
+    renderControls();
+  }
+
+  const repeatList = h(
+    "ul",
+    { class: "game-list" },
+    repeated.map((group, index) => {
+      const row = repeatedRow(group, { onclick: () => showRepeat(index) });
+      repeatRows.push(row);
       return h("li", {}, row);
     }),
   );
@@ -318,6 +379,15 @@ export async function renderOpening(container, context) {
   }
 
   function renderControls() {
+    if (mode === "repeat") {
+      clear(controls).append(
+        button("", { icon: "prev", "aria-label": "Previous repeated mistake", title: "Previous (←)", onclick: stepBack }),
+        button("", { icon: "next", "aria-label": "Next repeated mistake", title: "Next (→)", onclick: stepForward }),
+        button("", { icon: "flip", "aria-label": "Flip board", title: "Flip board (F)", onclick: flip }),
+        button("Back to the opening", { icon: "retry", variant: "primary", onclick: () => showLine() }),
+      );
+      return;
+    }
     const hasNextError = mode === "game" && moves().some((_, i) => i > current && isMyError(i));
     clear(controls).append(
       button("", { icon: "first", "aria-label": "Start", title: "Start (Home)", onclick: () => show(-1) }),
@@ -336,8 +406,8 @@ export async function renderOpening(container, context) {
   }
 
   // From the comparison, "forward" plays the move you actually made.
-  const stepForward = () => (comparing ? show(current) : show(current + 1));
-  const stepBack = () => show(current - 1);
+  const stepForward = () => (mode === "repeat" ? showRepeat(repeatIndex + 1) : comparing ? show(current) : show(current + 1));
+  const stepBack = () => (mode === "repeat" ? showRepeat(repeatIndex - 1) : show(current - 1));
   function flip() {
     board.flip();
     draw();
@@ -385,6 +455,13 @@ export async function renderOpening(container, context) {
           line.steps.length ? lineMoves : h("p", { class: "muted" }, "No named opening line."),
           line.steps.length ? button("Show on board", { variant: "ghost", icon: "eye", onclick: () => showLine() }) : null,
         ),
+        repeated.length
+          ? panel(
+              "Mistakes you repeat here",
+              h("p", { class: "muted small" }, "Positions in this opening where you went wrong in more than one game."),
+              repeatList,
+            )
+          : null,
         panel(`Your games (${games.length})`, gameList),
         gameMoves,
       ),

@@ -61,6 +61,7 @@ export const api = {
     request("GET", `/users/${userId}/games${query({ limit: 100, ...filters })}`),
   gameAnalysis: (gameId) => request("GET", `/games/${gameId}/analysis`),
   opening: (userId, filters) => request("GET", `/users/${userId}/opening${query(filters)}`),
+  repeatedMistakes: (userId, filters = {}) => request("GET", `/users/${userId}/repeated-mistakes${query(filters)}`),
   report: (userId, filters = {}) => request("GET", `/users/${userId}/report${query(filters)}`),
   puzzles: (userId, filters = {}) =>
     request("GET", `/users/${userId}/puzzles${query({ limit: 100, ...filters })}`),

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from chess_trainer.jobs.handlers import JobContext
 from chess_trainer.jobs.worker import work_once
+from chess_trainer.reports.repeated import build_repeated_mistakes
+from chess_trainer.reports.weakness import WeaknessFilters
 
 pytestmark = pytest.mark.integration
 
@@ -233,3 +235,22 @@ def test_opening_explorer(client: TestClient, user_id: int, analyzed: int) -> No
         params={"family": "Bishop's Opening", "time_class": "classical"},
     )
     assert filtered.status_code == 404
+
+
+def test_repeated_mistakes(
+    client: TestClient, user_id: int, analyzed: int, session: Session
+) -> None:
+    # One game can't repeat anything.
+    assert client.get(f"/users/{user_id}/repeated-mistakes").json() == []
+    assert client.get(f"/users/{user_id}/repeated-mistakes?min_games=1").status_code == 422
+
+    # With the threshold lowered, the query, path and explanation are filled in.
+    (group,) = build_repeated_mistakes(session, user_id, WeaknessFilters(), min_games=1)
+    assert (group.played[0].san, group.best_move_san, group.worst) == ("Nf6", "g6", "blunder")
+    assert group.path == ["e4", "e5", "Bc4", "Nc6", "Qh5"]
+    assert group.families == ["Bishop's Opening"]
+    assert group.explanation
+    other = build_repeated_mistakes(
+        session, user_id, WeaknessFilters(), family="Sicilian Defense", min_games=1
+    )
+    assert other == []
