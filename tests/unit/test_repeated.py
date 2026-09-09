@@ -19,6 +19,7 @@ def error(
     best: str | None = "e5d4",
     family: str | None = "Scotch Game",
     day: int = 1,
+    line: list[str] | None = None,
 ) -> ErrorRow:
     return ErrorRow(
         game_id=game_id,
@@ -32,6 +33,7 @@ def error(
         san=san,
         best_move_uci=best,
         best_move_san="exd4" if best == "e5d4" else best,
+        best_line=line if line is not None else ([best] if best else []),
         classification=kind,
         win_pct_loss=loss,
     )
@@ -82,3 +84,13 @@ def test_most_common_best_move_wins() -> None:
     rows = [error(1, best="g8f6"), error(2), error(3)]
     (group,) = group_errors(rows)
     assert group.best_move_uci == "e5d4"
+
+
+def test_best_line_comes_from_the_newest_game_with_the_best_move() -> None:
+    rows = [
+        error(1, day=1, line=["e5d4", "f3d4"]),
+        error(2, day=3, best="g8f6", line=["g8f6"]),
+        error(3, day=2, line=["e5d4", "c2c3", "d4c3"]),
+    ]
+    (group,) = group_errors(rows)
+    assert (group.best_move_san, group.best_line) == ("exd4", ["e5d4", "c2c3", "d4c3"])

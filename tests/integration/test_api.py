@@ -247,6 +247,7 @@ def test_repeated_mistakes(
     # With the threshold lowered, the query, path and explanation are filled in.
     (group,) = build_repeated_mistakes(session, user_id, WeaknessFilters(), min_games=1)
     assert (group.played[0].san, group.best_move_san, group.worst) == ("Nf6", "g6", "blunder")
+    assert group.best_line and group.best_line[0] == group.best_move_uci
     assert group.path == ["e4", "e5", "Bc4", "Nc6", "Qh5"]
     assert group.families == ["Bishop's Opening"]
     assert group.explanation

@@ -3,12 +3,15 @@
 // shared with the Stats page and the opening explorer.
 
 import { api } from "../api.js";
-import { Board } from "../board.js";
+import { Board, checkedKingSquare } from "../board.js";
 import { append, clear, formatDate, h, plural, titleCase } from "../dom.js";
 import { button, chip, colorDot, emptyState, kindBadge, pageHeader, panel, reasonList, select } from "../ui.js";
+import { Chess } from "../vendor/chess.js";
 import { arrowOf } from "./game.js";
 
 const TIME_CLASSES = ["bullet", "blitz", "rapid", "classical", "correspondence"];
+// Engine lines get speculative past this many plies.
+const MAX_LINE_PLIES = 10;
 
 /** "#/stats/repeated?..." keeping the Stats page filters, optionally opening one group. */
 export function repeatedHref(filters = {}, key = null) {
@@ -33,6 +36,73 @@ export function repeatedArrows(group) {
     ...group.played.map((move) => ({ ...arrowOf(move.uci), kind: "played" })),
     ...(group.best_move_uci ? [{ ...arrowOf(group.best_move_uci), kind: "best" }] : []),
   ];
+}
+
+/** The engine's best line from the mistake position: [{ uci, san, fen, number }]. */
+export function continuationSteps(group) {
+  const chess = new Chess(group.fen);
+  const steps = [];
+  for (const uci of (group.best_line || []).slice(0, MAX_LINE_PLIES)) {
+    const number = chess.moveNumber();
+    const white = chess.turn() === "w";
+    try {
+      const move = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+      steps.push({ uci, san: move.san, fen: chess.fen(), number, white });
+    } catch {
+      break;
+    }
+  }
+  return steps;
+}
+
+/**
+ * The best continuation, playable on `board`: clicking a move (or stepping)
+ * shows the position after it; step -1 is the mistake position with its arrows.
+ * Returns { element, go(index), step(direction), at() } or null without a line.
+ */
+export function continuation(group, board) {
+  const steps = continuationSteps(group);
+  if (steps.length < 2) return null;
+  let at = -1;
+  const cells = steps.map((step, i) =>
+    h(
+      "button",
+      { class: "move", type: "button", onclick: () => go(i) },
+      step.white || i === 0 ? h("span", { class: "move-number" }, `${step.number}${step.white ? "." : "..."}`) : null,
+      step.san,
+    ),
+  );
+  const back = button("", { icon: "prev", "aria-label": "Previous move of the line", title: "Previous move (←)", onclick: () => go(at - 1) });
+  const forward = button("", { icon: "next", "aria-label": "Next move of the line", title: "Next move (→)", onclick: () => go(at + 1) });
+  const reset = button("Back to the mistake", { icon: "retry", variant: "ghost", onclick: () => go(-1) });
+
+  function go(index) {
+    at = Math.min(Math.max(index, -1), steps.length - 1);
+    if (at < 0) {
+      board.setPosition(group.fen);
+      board.setMarks({});
+      board.setArrows(repeatedArrows(group));
+    } else {
+      const step = steps[at];
+      board.setPosition(step.fen);
+      board.setMarks({ lastMove: [step.uci.slice(0, 2), step.uci.slice(2, 4)], check: checkedKingSquare(new Chess(step.fen)) });
+      board.setArrows([]);
+    }
+    cells.forEach((cell, i) => cell.classList.toggle("current", i === at));
+    back.disabled = at < 0;
+    forward.disabled = at === steps.length - 1;
+    reset.hidden = at < 0;
+  }
+
+  const element = h(
+    "div",
+    { class: "continuation" },
+    h("p", { class: "result-why" }, "Best continuation"),
+    h("div", { class: "line-moves" }, cells),
+    h("div", { class: "continuation-controls" }, back, forward, reset),
+  );
+  go(-1);
+  return { element, go, step: (direction) => go(at + direction), at: () => at };
 }
 
 /** One line in a list of repeated mistakes. */
@@ -60,9 +130,10 @@ export function repeatedRow(group, { href = null, onclick = null, selected = fal
 
 /**
  * What went wrong here and in which games. `gameLink(occurrence)` returns the
- * attributes (href or onclick) of the link to each game.
+ * attributes (href or onclick) of the link to each game; `line` is the
+ * playable best continuation, if any.
  */
-export function repeatedCoach(group, { gameLink }) {
+export function repeatedCoach(group, { gameLink, line = null }) {
   const latest = group.occurrences[0];
   const kind = group.worst;
   return [
@@ -87,6 +158,7 @@ export function repeatedCoach(group, { gameLink }) {
     group.best_move_san
       ? h("div", { class: "coach-best" }, h("div", {}, "You should play ", h("strong", { class: "cls-best" }, moveText(group, group.best_move_san)), " here."))
       : null,
+    line ? line.element : null,
     group.explanation.length ? h("p", { class: "result-why" }, `Why ${latest.san} goes wrong`) : null,
     reasonList(group.explanation, kind),
     h(
@@ -109,12 +181,12 @@ export async function renderRepeated(container, context) {
   const user = context.user;
   const filters = { time_class: context.query.time_class || "", account_id: context.query.account_id || "" };
   const body = h("div");
-  let step = null; // (direction) => void, once groups are shown
+  let keys = null; // key -> action, once groups are shown
 
   const load = async () => {
     const groups = await api.repeatedMistakes(user.id, { ...filters, limit: 50 });
     const shown = repeatedBody(groups, filters, context.query.key);
-    step = shown.step;
+    keys = shown.keys;
     clear(body);
     append(body, shown.view);
   };
@@ -139,11 +211,11 @@ export async function renderRepeated(container, context) {
     body,
   );
   const onKey = (event) => {
-    if (!step || event.target.matches("input, select, textarea") || event.metaKey || event.ctrlKey) return;
-    const direction = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-    if (direction) {
+    if (!keys || event.target.matches("input, select, textarea") || event.metaKey || event.ctrlKey) return;
+    const action = keys[event.key];
+    if (action) {
       event.preventDefault();
-      step(direction);
+      action();
     }
   };
   document.addEventListener("keydown", onKey);
@@ -154,7 +226,7 @@ export async function renderRepeated(container, context) {
 function repeatedBody(groups, filters, wantedKey) {
   if (!groups.length) {
     return {
-      step: null,
+      keys: null,
       view: emptyState({
         iconName: "stats",
         title: "No repeated mistakes",
@@ -167,16 +239,21 @@ function repeatedBody(groups, filters, wantedKey) {
   const caption = h("div", { class: "player opening-caption" });
   const coach = h("div", { class: "coach", "aria-live": "polite" });
   const rows = [];
+  let line = null; // the shown group's playable best continuation
   let current = Math.max(0, groups.findIndex((g) => g.key === wantedKey));
 
   const show = (index) => {
     current = (index + groups.length) % groups.length;
     const group = groups[current];
     board.setOrientation(group.color);
-    board.setPosition(group.fen);
-    board.setArrows(repeatedArrows(group));
+    line = continuation(group, board);
+    if (!line) {
+      board.setPosition(group.fen);
+      board.setMarks({});
+      board.setArrows(repeatedArrows(group));
+    }
     clear(caption).append(colorDot(group.color), h("strong", {}, `${titleCase(group.color)} to move`), h("span", { class: "muted" }, `Mistake ${current + 1} of ${groups.length}`));
-    clear(coach).append(...repeatedCoach(group, { gameLink: (o) => ({ href: `#/games/${o.game_id}/${o.ply}` }) }).filter(Boolean));
+    clear(coach).append(...repeatedCoach(group, { gameLink: (o) => ({ href: `#/games/${o.game_id}/${o.ply}` }), line }).filter(Boolean));
     rows.forEach((row, i) => row.classList.toggle("selected", i === current));
     history.replaceState(null, "", repeatedHref(filters, group.key));
   };
@@ -202,13 +279,21 @@ function repeatedBody(groups, filters, wantedKey) {
       h(
         "div",
         { class: "controls" },
-        button("Previous", { icon: "prev", title: "Previous (←)", onclick: () => show(current - 1) }),
-        button("Next mistake", { icon: "skip", variant: "primary", title: "Next (→)", onclick: () => show(current + 1) }),
+        button("Previous", { icon: "prev", title: "Previous mistake (↑)", onclick: () => show(current - 1) }),
+        button("Next mistake", { icon: "skip", variant: "primary", title: "Next mistake (↓)", onclick: () => show(current + 1) }),
       ),
-      h("p", { class: "muted small" }, "Red arrows: what you played. Green: the better move."),
+      h("p", { class: "muted small" }, "Red arrows: what you played. Green: the better move. ← → play through the best continuation, ↑ ↓ change mistake."),
     ),
     h("div", { class: "analysis-side" }, panel(null, coach), panel(`All repeated mistakes (${groups.length})`, list)),
   );
   show(current);
-  return { view, step: (direction) => show(current + direction) };
+  return {
+    view,
+    keys: {
+      ArrowUp: () => show(current - 1),
+      ArrowDown: () => show(current + 1),
+      ArrowLeft: () => line?.step(-1),
+      ArrowRight: () => line?.step(1),
+    },
+  };
 }

@@ -466,6 +466,10 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .opening-explorer .coach-meta .btn-ghost:last-child { margin-left: auto; }
 button.game-row { width: calc(100% + 16px); border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
 .game-row.selected { background: var(--surface-3); }
+.continuation { margin: var(--space-3) 0; }
+.continuation .line-moves { margin-bottom: var(--space-2); }
+.continuation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.continuation-controls [hidden] { display: none; }
 .occurrences { display: grid; gap: 6px; }
 .occurrences li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .occurrences li .chip { margin-left: auto; }

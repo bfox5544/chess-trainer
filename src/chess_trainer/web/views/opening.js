@@ -8,7 +8,7 @@ import { MOVE_KINDS, button, chip, colorDot, emptyState, kindBadge, moveKind, no
 import { Chess } from "../vendor/chess.js";
 import { arrowOf, lineToSan, moveList } from "./game.js";
 import { errorCounts } from "./games.js";
-import { repeatedArrows, repeatedCoach, repeatedRow } from "./repeated.js";
+import { continuation, repeatedArrows, repeatedCoach, repeatedRow } from "./repeated.js";
 
 const squaresOf = (uci) => [uci.slice(0, 2), uci.slice(2, 4)];
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -67,6 +67,7 @@ export async function renderOpening(container, context) {
   // "repeat": a position where you went wrong in several games.
   let mode = "line";
   let repeatIndex = null; // index into repeated
+  let repeatLine = null; // its playable best continuation, if any
   let current = line.steps.length - 1;
   let selected = null; // index into games
   let report = null; // that game's full analysis
@@ -92,6 +93,7 @@ export async function renderOpening(container, context) {
 
   function draw() {
     if (mode === "repeat") {
+      if (repeatLine) return repeatLine.go(repeatLine.at());
       const group = repeated[repeatIndex];
       board.setPosition(group.fen);
       board.setMarks({});
@@ -245,6 +247,7 @@ export async function renderOpening(container, context) {
     setGameInUrl(null);
     if (board.orientation !== group.color) board.setOrientation(group.color);
     clear(caption).append(colorDot(group.color), h("strong", {}, `${titleCase(group.color)} to move`), h("span", { class: "muted" }, `Repeated mistake ${repeatIndex + 1} of ${repeated.length}`));
+    repeatLine = continuation(group, board);
     draw();
     const gameLink = (occurrence) => {
       const gameIndex = games.findIndex((g) => g.game.id === occurrence.game_id);
@@ -257,7 +260,7 @@ export async function renderOpening(container, context) {
         },
       };
     };
-    clear(coach).append(...repeatedCoach(group, { gameLink }).filter(Boolean));
+    clear(coach).append(...repeatedCoach(group, { gameLink, line: repeatLine }).filter(Boolean));
     renderControls();
   }
 
@@ -381,8 +384,8 @@ export async function renderOpening(container, context) {
   function renderControls() {
     if (mode === "repeat") {
       clear(controls).append(
-        button("", { icon: "prev", "aria-label": "Previous repeated mistake", title: "Previous (←)", onclick: stepBack }),
-        button("", { icon: "next", "aria-label": "Next repeated mistake", title: "Next (→)", onclick: stepForward }),
+        button("", { icon: "prev", "aria-label": "Previous repeated mistake", title: "Previous mistake (↑)", onclick: () => showRepeat(repeatIndex - 1) }),
+        button("", { icon: "next", "aria-label": "Next repeated mistake", title: "Next mistake (↓)", onclick: () => showRepeat(repeatIndex + 1) }),
         button("", { icon: "flip", "aria-label": "Flip board", title: "Flip board (F)", onclick: flip }),
         button("Back to the opening", { icon: "retry", variant: "primary", onclick: () => showLine() }),
       );
@@ -406,8 +409,10 @@ export async function renderOpening(container, context) {
   }
 
   // From the comparison, "forward" plays the move you actually made.
-  const stepForward = () => (mode === "repeat" ? showRepeat(repeatIndex + 1) : comparing ? show(current) : show(current + 1));
-  const stepBack = () => (mode === "repeat" ? showRepeat(repeatIndex - 1) : show(current - 1));
+  // In a repeated mistake, ← → walk its best continuation and ↑ ↓ change mistake.
+  const stepForward = () => (mode === "repeat" ? repeatLine?.step(1) : comparing ? show(current) : show(current + 1));
+  const stepBack = () => (mode === "repeat" ? repeatLine?.step(-1) : show(current - 1));
+  const stepRepeat = (direction) => mode === "repeat" && showRepeat(repeatIndex + direction);
   function flip() {
     board.flip();
     draw();
@@ -415,7 +420,12 @@ export async function renderOpening(container, context) {
 
   const onKey = (event) => {
     if (event.target.matches("input, select, textarea") || event.metaKey || event.ctrlKey) return;
-    const actions = { ArrowLeft: stepBack, ArrowRight: stepForward, Home: () => show(-1), End: () => show(last()), f: flip };
+    const actions = {
+      ArrowLeft: stepBack,
+      ArrowRight: stepForward,
+      ...(mode === "repeat" ? { ArrowUp: () => stepRepeat(-1), ArrowDown: () => stepRepeat(1) } : { Home: () => show(-1), End: () => show(last()) }),
+      f: flip,
+    };
     if (actions[event.key]) {
       event.preventDefault();
       actions[event.key]();

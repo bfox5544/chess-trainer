@@ -243,6 +243,7 @@ class RepeatedMistakeOut(ApiModel):
     games: int
     best_move_san: str | None
     best_move_uci: str | None
+    best_line: list[str] = Field(description="The engine's line from here (UCI), best move first.")
     worst: Classification
     average_win_pct_loss: float
     played: list[PlayedMoveOut]

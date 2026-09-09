@@ -43,6 +43,7 @@ class ErrorRow:
     san: str
     best_move_uci: str | None
     best_move_san: str | None
+    best_line: list[str]
     classification: Classification
     win_pct_loss: float
 
@@ -63,6 +64,7 @@ class RepeatedMistake:
     ply: int
     best_move_san: str | None
     best_move_uci: str | None
+    best_line: list[str]  # the engine's line from here (UCI), starting with the best move
     worst: Classification
     average_win_pct_loss: float
     played: list[PlayedMove]  # most common first
@@ -106,7 +108,8 @@ def group_errors(rows: Iterable[ErrorRow], min_games: int = 2) -> list[RepeatedM
         )
         moves = Counter((r.san, r.uci) for r in rows_)
         best_uci = most_common(r.best_move_uci for r in rows_)
-        best_san = next((r.best_move_san for r in rows_ if r.best_move_uci == best_uci), None)
+        # the newest game whose engine line starts with that move supplies the line
+        best = next((r for r in rows_ if r.best_move_uci == best_uci), None)
         families = Counter(r.opening_family or UNKNOWN_OPENING for r in rows_)
         first = rows_[0]
         groups.append(
@@ -116,8 +119,9 @@ def group_errors(rows: Iterable[ErrorRow], min_games: int = 2) -> list[RepeatedM
                 color=first.color,
                 move_number=first.move_number,
                 ply=first.ply,
-                best_move_san=best_san,
+                best_move_san=best.best_move_san if best else None,
                 best_move_uci=best_uci,
+                best_line=list(best.best_line or []) if best else [],
                 worst=max((r.classification for r in rows_), key=SEVERITY.__getitem__),
                 average_win_pct_loss=round(sum(r.win_pct_loss for r in rows_) / len(rows_), 1),
                 played=[PlayedMove(san, uci, n) for (san, uci), n in moves.most_common()],
@@ -141,6 +145,7 @@ def load_errors(session: Session, user_id: int, filters: WeaknessFilters) -> lis
         MoveAnalysis.san,
         MoveAnalysis.best_move_uci,
         MoveAnalysis.best_move_san,
+        MoveAnalysis.best_line,
         MoveAnalysis.classification,
         MoveAnalysis.win_pct_loss,
     )

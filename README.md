@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 233 tests; integration tests need `docker compose up -d`
+uv run pytest             # 234 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -70,7 +70,7 @@ uv run ruff check .
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
-| `GET /users/{id}/repeated-mistakes` | Positions where you went wrong in at least `min_games` (default 2) games, most repeated first, with the moves you played, the better move and the games (same filters, plus `family`) |
+| `GET /users/{id}/repeated-mistakes` | Positions where you went wrong in at least `min_games` (default 2) games, most repeated first, with the moves you played, the better move, its best continuation and the games (same filters, plus `family`) |
 | `GET /users/{id}/opening?family=` | One opening: its most common entry line in your games, and your analyzed games in it with the plies where you went wrong (same filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
 | `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
@@ -377,7 +377,10 @@ orders, and under different opening names (a position that is "Petrov's
 Defense" in some games and "Italian Game" in others). A position counts once
 per game, so shuffling back and forth within one game is not a habit; a group
 needs two games. The better move shown is the engine's most common choice
-across the games, and the explanation is the newest game's.
+across the games, and the explanation is the newest game's. The best
+continuation is the engine line stored for the newest game whose best move
+matches, cut to 10 plies because deeper engine lines get speculative; on the
+board, ← → play through it and ↑ ↓ change mistake.
 
 ### Time pressure scales with the time control
 
