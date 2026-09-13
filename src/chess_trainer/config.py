@@ -50,6 +50,22 @@ class Settings(BaseSettings):
     # Rows per insert statement (10 parameters each; Postgres allows 65535).
     puzzle_library_batch_size: int = 2000
 
+    # Personal training: Lichess puzzles picked from your rating, mistakes
+    # and playstyle (training/).
+    # Puzzle rating (Glicko-1). The deviation starts wide so early results
+    # move the rating quickly, and never drops below the floor so it keeps
+    # adapting.
+    puzzle_rating_default: float = 1500.0  # when there are no rated games to seed from
+    puzzle_rating_initial_deviation: float = 250.0
+    puzzle_rating_min_deviation: float = 70.0
+    # Added to Chess.com game ratings when seeding: Lichess ratings run higher.
+    puzzle_rating_chesscom_offset: float = 200.0
+    # Recommended puzzles are rated within this many points of the user,
+    # widening if too few match.
+    training_rating_window: int = 100
+    # How many of the most recent mistakes and blunders describe the user.
+    training_mistake_sample: int = 600
+
     # HTTP clients
     lichess_base_url: str = "https://lichess.org"
     chesscom_base_url: str = "https://api.chess.com"

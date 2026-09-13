@@ -258,7 +258,10 @@ class LibraryPuzzle(Base):
     """
 
     __tablename__ = "library_puzzles"
-    __table_args__ = (sa.Index("ix_library_puzzles_themes", "themes", postgresql_using="gin"),)
+    __table_args__ = (
+        sa.Index("ix_library_puzzles_themes", "themes", postgresql_using="gin"),
+        sa.Index("ix_library_puzzles_opening_tags", "opening_tags", postgresql_using="gin"),
+    )
 
     id: Mapped[str] = mapped_column(sa.String(10), primary_key=True)  # Lichess PuzzleId
     fen: Mapped[str] = mapped_column(sa.String(100))
@@ -287,3 +290,42 @@ class LibraryTheme(Base):
 
     theme: Mapped[str] = mapped_column(sa.String(40), primary_key=True)
     count: Mapped[int]
+
+
+class PuzzleRating(Base):
+    """A user's puzzle-solving strength on the Lichess puzzle scale (Glicko-1).
+
+    Created on first use, seeded from the user's game ratings with a wide
+    deviation so the first results move it quickly (see `training/rating.py`).
+    """
+
+    __tablename__ = "puzzle_ratings"
+
+    user_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    rating: Mapped[float]
+    deviation: Mapped[float]
+    rated_attempts: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
+
+
+class LibraryAttempt(Base):
+    """One finished attempt at a library puzzle. Only a user's first attempt
+    at a puzzle is rated; later ones are practice and are kept for history."""
+
+    __tablename__ = "library_attempts"
+    __table_args__ = (sa.Index("ix_library_attempts_user_puzzle", "user_id", "puzzle_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"))
+    puzzle_id: Mapped[str] = mapped_column(
+        sa.ForeignKey("library_puzzles.id", ondelete="CASCADE"), index=True
+    )
+    solved: Mapped[bool]  # finished without having the solution shown
+    first_try: Mapped[bool]  # solved with no wrong move and no hint
+    rated: Mapped[bool]
+    puzzle_rating: Mapped[int]  # the puzzle's rating at the time
+    rating_before: Mapped[float | None]  # the user's rating; null when not rated
+    rating_after: Mapped[float | None]
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)

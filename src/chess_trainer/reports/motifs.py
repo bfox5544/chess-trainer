@@ -1,6 +1,8 @@
 """Extension point for tactical motif tagging (forks, pins, skewers, ...).
 
-Nothing is detected yet. To add a motif:
+Nothing is registered yet. Detectors exist in `analysis/motifs.py` (they
+drive puzzle recommendations) but are kept out of the registry until the
+own-puzzle pages hide themes before solving. To add a motif:
 
 1. Write a class with a `name` and a `tags()` method (see `MotifTagger`).
 2. Append an instance to `REGISTRY`.

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from chess_trainer.api.routes import accounts, library, users
+from chess_trainer.api.routes import accounts, library, training, users
 from chess_trainer.api.routes import resources as resource_routes
 
 # The frontend is plain static files (no build step) shipped inside the
@@ -40,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts.router)
     app.include_router(resource_routes.router)
     app.include_router(library.router)
+    app.include_router(training.router)
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:

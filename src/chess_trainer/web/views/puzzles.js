@@ -1,5 +1,6 @@
-// Training hub. Two sources: puzzles made from your own mistakes, and rated
-// puzzles from the Lichess puzzle database.
+// Training hub. Three sources: puzzles made from your own mistakes, Lichess
+// puzzles picked for you (views/recommended.js), and the Lichess puzzle
+// database browsed by difficulty and theme.
 
 import { api } from "../api.js";
 import { miniBoard } from "../board.js";
@@ -7,23 +8,26 @@ import { append, clear, h, plural, titleCase } from "../dom.js";
 import { clearHistory, isSolved, loadHistory } from "../history.js";
 import { jobs } from "../jobs.js";
 import { button, chip, confirmDialog, emptyState, loading, notice, pageHeader, segmented, select, statTile, themeLabel } from "../ui.js";
+import { libraryCard } from "./library-card.js";
 import { LIBRARY_PREFIX, filterQuery, openRandomLibraryPuzzle } from "./library-puzzle.js";
+import { renderRecommendedHub } from "./recommended.js";
 
 const PHASES = [["", "All"], ["opening", "Opening"], ["middlegame", "Middlegame"], ["endgame", "Endgame"]];
 const STATUSES = [["", "All"], ["unsolved", "Unsolved"], ["solved", "Solved"]];
 
-const SOURCES = [["mine", "From your games"], ["lichess", "Lichess database"]];
+const SOURCES = [["mine", "From your games"], ["foryou", "For you"], ["lichess", "Lichess database"]];
 
 function sourceSwitch(current) {
   return h(
     "div",
     { class: "source-switch" },
-    segmented(SOURCES, current, (value) => (location.hash = value === "lichess" ? "#/puzzles?source=lichess" : "#/puzzles"), "Puzzle source"),
+    segmented(SOURCES, current, (value) => (location.hash = value === "mine" ? "#/puzzles" : `#/puzzles?source=${value}`), "Puzzle source"),
   );
 }
 
 export async function renderPuzzles(container, context) {
   if (context.query.source === "lichess") return renderLibraryHub(container, context);
+  if (context.query.source === "foryou") return renderRecommendedHub(container, context, sourceSwitch("foryou"));
   const user = context.user;
   const puzzles = await api.puzzles(user.id);
   if (!puzzles.length) {
@@ -39,7 +43,7 @@ export async function renderPuzzles(container, context) {
           "div",
           { class: "empty-actions" },
           button("Import games", { variant: "primary", icon: "import", href: "#/import" }),
-          button("Lichess puzzles", { icon: "puzzle", href: "#/puzzles?source=lichess" }),
+          button("Puzzles for you", { icon: "puzzle", href: "#/puzzles?source=foryou" }),
         ),
       }),
     );
@@ -143,7 +147,6 @@ function puzzleCard(puzzle, entry) {
 const DIFFICULTIES = [["easier", "Easier"], ["normal", "Normal"], ["harder", "Harder"], ["any", "Any rating"]];
 const DIFFICULTY_OFFSET = { easier: -300, normal: 0, harder: 300 };
 const RATING_WINDOW = 100;
-const DEFAULT_LEVEL = 1500;
 const PREFS_KEY = "chessTrainer.libraryPrefs";
 // Sizes offered for loading. ~62 bytes of compressed download per puzzle read.
 const SIZES = [["10000", "10,000"], ["100000", "100,000"], ["500000", "500,000"], ["all", "Everything"]];
@@ -163,16 +166,6 @@ function savePrefs(prefs) {
   } catch {
     /* storage unavailable */
   }
-}
-
-/** The user's playing strength: median rating over their recent games. */
-function estimateLevel(rows) {
-  const ratings = rows
-    .map((row) => (row.user_color === "white" ? row.game.white_rating : row.game.black_rating))
-    .filter((rating) => Number.isFinite(rating))
-    .sort((a, b) => a - b);
-  if (!ratings.length) return { rating: DEFAULT_LEVEL, known: false };
-  return { rating: ratings[Math.floor(ratings.length / 2)], known: true };
 }
 
 function ratingWindow(difficulty, level) {
@@ -224,7 +217,7 @@ function libraryLoader({ loaded }) {
 
 async function renderLibraryHub(container, context) {
   const user = context.user;
-  const [library, games] = await Promise.all([api.librarySummary(), api.userGames(user.id, { limit: 30 })]);
+  const [library, rating] = await Promise.all([api.librarySummary(), api.puzzleRating(user.id)]);
   if (!library.total) {
     append(
       container,
@@ -248,7 +241,7 @@ async function renderLibraryHub(container, context) {
     return;
   }
 
-  const level = estimateLevel(games);
+  const level = Math.round(rating.rating);
   const prefs = loadPrefs();
   let difficulty = DIFFICULTIES.some(([value]) => value === prefs.difficulty) ? prefs.difficulty : "normal";
   let theme = library.themes.some((t) => t.theme === prefs.theme) ? prefs.theme : "";
@@ -260,7 +253,7 @@ async function renderLibraryHub(container, context) {
   const status = h("div");
   const windowText = h("p", { class: "muted small" });
   const describeWindow = () => {
-    const { rating_min: min, rating_max: max } = ratingWindow(difficulty, level.rating);
+    const { rating_min: min, rating_max: max } = ratingWindow(difficulty, level);
     clear(windowText).append(min === null ? "Puzzles of every rating." : `Puzzles rated ${min}–${max}.`);
   };
   const start = button("Start solving", {
@@ -278,7 +271,7 @@ async function renderLibraryHub(container, context) {
       }
     },
   });
-  const filters = () => ({ ...ratingWindow(difficulty, level.rating), theme: theme || null });
+  const filters = () => ({ ...ratingWindow(difficulty, level), theme: theme || null });
   const grid = h("div", { class: "puzzle-grid" });
   let sampleToken = 0;
   const loadSample = async () => {
@@ -317,7 +310,7 @@ async function renderLibraryHub(container, context) {
       "div",
       { class: "stat-row" },
       statTile("Library", library.total.toLocaleString(), "Puzzles loaded from Lichess"),
-      statTile("Your level", level.known ? `≈ ${level.rating}` : "—", level.known ? "Median rating in your recent games" : `No rated games yet; using ${DEFAULT_LEVEL}`),
+      statTile("Your puzzle rating", `≈ ${level}`, rating.seeded ? "Estimated from your game ratings" : `After ${plural(rating.rated_attempts, "rated puzzle")}`),
       statTile("Solved", solved.length.toLocaleString(), solved.length ? `${Math.round((100 * firstTry) / solved.length)}% on the first try` : "None yet"),
     ),
     h(
@@ -335,27 +328,11 @@ async function renderLibraryHub(container, context) {
       { class: "muted small footnote" },
       "Puzzles from ",
       h("a", { href: "https://database.lichess.org/#puzzles", target: "_blank", rel: "noopener noreferrer" }, "database.lichess.org"),
-      " (CC0). Solving history is kept in this browser only. ",
+      " (CC0). Finished puzzles move your puzzle rating; the Solved marks are kept in this browser. ",
       h("button", { class: "link", type: "button", onclick: () => clear(moreSlot).append(libraryLoader({ loaded: library.total })) }, "Load more puzzles"),
     ),
     moreSlot,
   );
   describeWindow();
   loadSample();
-}
-
-function libraryCard(puzzle, entry, query) {
-  const userMoves = puzzle.solution.filter((step) => step.by === "user").length;
-  return h(
-    "a",
-    { class: `puzzle-card${entry?.solved ? " solved" : ""}`, href: `#/puzzles/lichess/${encodeURIComponent(puzzle.id)}${query}` },
-    // The position the solver faces, after the opponent's setup move.
-    h("div", { class: "puzzle-thumb" }, miniBoard(puzzle.start_fen, puzzle.user_color), entry?.solved ? h("span", { class: "solved-mark" }, "Solved") : null),
-    h(
-      "div",
-      { class: "puzzle-card-body" },
-      h("div", { class: "puzzle-card-title" }, h("span", { class: `color-dot ${puzzle.user_color}` }), `${titleCase(puzzle.user_color)} to move`),
-      h("div", { class: "muted small" }, `Rated ${puzzle.rating} · ${plural(userMoves, "move")} to find`),
-    ),
-  );
 }

@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 234 tests; integration tests need `docker compose up -d`
+uv run pytest             # 265 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -79,6 +79,10 @@ uv run ruff check .
 | `GET /library/puzzles` | A random sample of library puzzles (`rating_min`, `rating_max`, `theme`, `limit` ≤ 50) |
 | `GET /library/puzzles/random` | A random library puzzle (`rating_min`, `rating_max`, `theme`, `exclude`) |
 | `GET /library/puzzles/{id}` | One library puzzle, with the setup move and solution in SAN |
+| `GET /users/{id}/puzzle-rating` | Your rating on the Lichess puzzle scale (an estimate from game ratings until a puzzle is rated) |
+| `GET /users/{id}/training` | What you should train and why: tactics you miss or allow, openings you play, phases where you go wrong, plus rating and progress |
+| `GET /users/{id}/recommended-puzzles` | Library puzzles picked for you: near your puzzle rating, not attempted before, each with the focus it trains (`limit` ≤ 30, `exclude`) |
+| `POST /users/{id}/library-attempts` | Record a finished attempt at a library puzzle; the first attempt at a puzzle moves your puzzle rating |
 
 Interactive docs are served at `/docs`.
 
@@ -91,7 +95,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 |---|---|
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
-| Puzzles | Two sources: puzzles from your own mistakes (with solved/unsolved tracking) and rated Lichess puzzles (a shuffled grid filtered by difficulty and theme); solve by clicking or dragging |
+| Puzzles | Three sources: puzzles from your own mistakes (with solved/unsolved tracking); "For you", Lichess puzzles picked from your puzzle rating, the tactics you miss or allow in your games and the openings you play, with the reasons listed; and the Lichess database browsed by difficulty and theme. Solve by clicking or dragging; finished Lichess puzzles move your puzzle rating. |
 | Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one |
 | Import | Link accounts and import; progress shows as a banner on every page |
 
@@ -120,8 +124,9 @@ Decisions worth knowing:
   Chess.com numbers exactly.
 - **"What to work on" has minimum sample sizes** (`insights.js`), so a few
   unlucky moves are not reported as a weakness.
-- **Puzzle solving history is stored in the browser**, because the backend
-  does not record attempts yet. The UI says so, and clearing it asks first.
+- **Solved marks are stored in the browser**; for puzzles from your own
+  games that is the only record, and the UI says so. Attempts at Lichess
+  puzzles are also saved on the server, where they drive the puzzle rating.
 - **All text goes through `textContent`** (`dom.js`), so usernames and opening
   names from the platforms cannot inject markup.
 - There is no login: the chosen profile is remembered in `localStorage`
@@ -144,11 +149,12 @@ src/chess_trainer/
 ├── db/              models, enums, session
 ├── accounts/        users and their platform accounts
 ├── ingestion/       GameSource protocol, Lichess + Chess.com clients, retrying HTTP, normalization
-├── analysis/        winprob, classify, phase, clock, openings  (pure)
+├── analysis/        winprob, classify, phase, clock, openings, explain, motifs  (pure)
 │                    engine, cache, replay, moves, pipeline     (I/O at the edges)
 ├── reports/         game report, weakness report, opening explorer, repeated mistakes, motif extension point
 ├── puzzles/         builder (pure), validators, generator, service
 ├── library/         Lichess puzzle database: parse, present (pure), feed (streaming), store, cli
+├── training/        personal training: rating, focus (pure), mistakes, service
 ├── jobs/            queue, handlers, worker
 ├── api/             FastAPI app, routes, schemas
 └── web/             static frontend served at /app (no build step)
@@ -336,16 +342,56 @@ clearly best reply. The [Lichess puzzle database](https://database.lichess.org/#
   (indexed); a random puzzle is the first match at or after a random point,
   wrapping once. `ORDER BY random()` would sort every matching row on each
   request.
-- **Difficulty from your games.** The hub takes the median of your rating
-  over recent games and offers a ±100 window around it, 300 below it, or
-  300 above it. Chess.com and Lichess ratings aren't on the same scale, so
-  this is a starting point, not a calibration.
+- **Difficulty from your puzzle rating.** The hub offers a ±100 window around
+  your puzzle rating (see below), 300 below it, or 300 above it.
 - **Themes are hidden until you finish.** "Fork" or "mate in 2" gives the
   answer away, so the trainer shows them only after the puzzle is done (as
   Lichess does).
 
 The import runs as a background job (started from the Puzzles page) or from
 the command line; both call `library/store.import_library`.
+
+### Recommended puzzles: rating, mistakes and playstyle
+
+"For you" picks Lichess puzzles from three kinds of evidence (`training/`).
+
+- **Puzzle rating (Glicko-1, `training/rating.py`).** A puzzle is an opponent
+  with a published rating and deviation; a clean solve is a win and anything
+  else (a wrong move, a hint, the solution shown) a loss, as on Lichess.
+  Glicko rather than Elo because its deviation says how sure the rating is:
+  it starts wide (250), so the first puzzles move the rating a long way, and
+  has a floor (70) so it keeps adapting. The rating is seeded from the median
+  of your last 30 rated games, with 200 added to Chess.com ratings because
+  Lichess ratings run higher; the offset is rough and the wide deviation is
+  what corrects it. Only the first attempt at a puzzle is rated. A puzzle
+  left after a wrong move or a hint is recorded as a loss, so skipping the
+  ones that go badly does not inflate the rating.
+- **Mistakes become Lichess themes (`analysis/motifs.py`).** Each of your
+  last 600 mistakes and blunders is tagged from its stored engine lines: the
+  best line is the tactic you missed, the reply line is the tactic you
+  allowed. The tagger names hanging pieces, forks, pins, skewers, discovered
+  attacks, promotions and mates, using Lichess's own theme names so matching
+  puzzles is an array lookup. It is conservative like the explanations: a
+  fork counts only if a forked piece is then taken. On real games about a
+  quarter of serious errors get a motif; the rest are positional or lose
+  material in ways it does not name. Tags are computed at read time, so
+  games analyzed before the tagger existed are covered and changing it needs
+  no migration.
+- **Playstyle is what can be measured.** The openings you play (matched to
+  the database's opening tags) and the pace of your games: mostly bullet and
+  blitz gets short puzzles at your level, mostly slower games gets long ones.
+  "Aggressive" or "positional" is not guessed at.
+- **The mix (`training/focus.py`).** Half the puzzles train tactics from your
+  mistakes, 20% your openings, 15% the phases where your errors happen, 15%
+  anything at your level. Within a group, weight is the square root of the
+  count, so the commonest error leads without crowding out the rest. A
+  pattern needs two games; an opening needs three.
+- **Picking.** Each slot looks for an unattempted puzzle within ±100 of your
+  rating, then ±200, then ±400, and falls back to "at your level" if its
+  focus has none, saying so. Attempted puzzles are excluded in SQL.
+- **Every pick carries its reason**, shown on the hub. On a card and in the
+  trainer a tactic pick only says "From your mistakes" until the puzzle is
+  finished, because naming the tactic gives the answer away.
 
 ### One time-class formula for both platforms
 
@@ -414,6 +460,8 @@ threshold is `min(30s, 10% of base time)`, both configurable.
 | `puzzles` | Puzzle candidates with full solution, status, and provenance |
 | `library_puzzles` | Puzzles from the Lichess puzzle database, shared by all users |
 | `library_themes` | Puzzle count per theme, refreshed after each library import |
+| `puzzle_ratings` | One row per user: Glicko rating and deviation on the Lichess puzzle scale |
+| `library_attempts` | Finished attempts at library puzzles, with the rating before and after |
 | `jobs` | Background jobs; also the queue |
 
 Rows in `move_analyses` and `puzzles` are upserted by `(game_id, ply)`.
@@ -437,14 +485,15 @@ reference them later.
 
 Not built, but the current design was shaped so these fit without rework:
 
-- **Tactical motifs.** `reports/motifs.py` defines a `MotifTagger` protocol
-  and an empty registry. Puzzle generation already calls it and stores the
-  result in `puzzles.themes`; the weakness report already groups by it. A test
-  registers a dummy tagger to prove no further wiring is needed.
-- **Puzzle attempts and spaced repetition.** A future `puzzle_attempts` table
-  (`user_id`, `puzzle_id`, `attempted_at`, `solved`, `moves_played`,
-  `time_ms`) hangs off stable puzzle ids and per-puzzle ownership, both of
-  which exist now.
+- **Themes on your own puzzles.** `reports/motifs.py` defines a `MotifTagger`
+  protocol and an empty registry. Puzzle generation already calls it and
+  stores the result in `puzzles.themes`; the weakness report already groups
+  by it. The detectors now exist (`analysis/motifs.py`, used for
+  recommendations) but are not registered, because the own-puzzle pages show
+  themes before solving, which would give the answer away.
+- **Attempts at your own puzzles and spaced repetition.** Library attempts
+  are stored (`library_attempts`); a matching table for own-game puzzles
+  hangs off stable puzzle ids and per-puzzle ownership, both of which exist.
 - **External puzzles.** `puzzles.source` distinguishes `own_game` from future
   imports such as the Lichess puzzle database.
 - **Rating-band baselines.** Opponents' moves are already analyzed and phase,
@@ -456,14 +505,19 @@ Not built, but the current design was shaped so these fit without rework:
 
 - The frontend is checked by scripted browser runs, not by an automated test
   suite; the backend only tests that its files are served.
-- Puzzle attempts are saved only in the browser, not on the server.
+- Attempts at puzzles from your own games are saved only in the browser
+  (Lichess puzzle attempts are saved on the server).
+- Recommendations need a large library: with 10,000 puzzles loaded, few
+  match a rating window plus a tactic or opening, and picks fall back to
+  "at your level". Load 500,000 or more for close matches.
+- The puzzle rating's starting point is rough (see the design note); it
+  takes about ten puzzles to settle.
 - The worker runs one job at a time, so loading the full puzzle database
   (several minutes) delays game analysis queued behind it. Run a second
   worker process if that matters.
-- Library puzzle difficulty is a fixed rating window; there is no puzzle
-  rating for the user that moves with results yet.
 - Explanations cover material, forks and mates. They don't yet name pins,
-  skewers, discovered attacks or trapped pieces (a trap shows up as "after the
+  skewers, discovered attacks (the motif tagger does, for recommendations
+  only) or trapped pieces (a trap shows up as "after the
   reply …, material can't be held"), and positional mistakes get a generic
   sentence.
 - There is no light theme and no board/piece theme choice.

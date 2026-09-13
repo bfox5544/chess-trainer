@@ -13,6 +13,10 @@
 //   result(),                 // node shown once finished
 //   facts(finished),          // [[label, value], ...] for the "About" panel
 //   finishedLinks(),          // extra buttons once finished
+//   onAttempt({solved, firstTry}), // optional: called once per run when it ends
+//                             // (finished, or abandoned after a wrong move or
+//                             // hint); may return a node (or a promise of one)
+//                             // to show under the result
 // }
 
 import { Board, checkedKingSquare } from "./board.js";
@@ -44,6 +48,19 @@ export function mountTrainer(container, spec) {
   const board = new Board({ orientation: spec.userColor, interactive: true, onSquare: (square) => onSquare(square) });
 
   let chess, step, selected, targets, wrongTries, hints, finished, revealed, timers, lastMove, waiting;
+  let run = 0; // counts restarts, so a late onAttempt result is not shown on a new run
+  let reported = true; // whether this run's outcome has been passed to onAttempt
+
+  /** Tell the page how this run ended, once. */
+  const report = (outcome) => {
+    if (reported || !spec.onAttempt) return null;
+    reported = true;
+    return spec.onAttempt(outcome);
+  };
+  /** A run left after a wrong move or a hint counts as a failed attempt. */
+  const abandon = () => {
+    if (wrongTries || hints || revealed) report({ solved: false, firstTry: false });
+  };
 
   const draw = (extra = {}) => {
     board.setPosition(chess.fen());
@@ -116,6 +133,9 @@ export function mountTrainer(container, spec) {
   };
 
   function reset() {
+    if (run) abandon();
+    run += 1;
+    reported = false;
     (timers || []).forEach(clearTimeout);
     timers = [];
     chess = new Chess(spec.fen);
@@ -157,6 +177,12 @@ export function mountTrainer(container, spec) {
     recordAttempt(spec.userId, spec.historyKey, { solved: !revealed, firstTry: clean });
     say(kind, title, text);
     clear(result).append(spec.result());
+    const thisRun = run;
+    Promise.resolve(report({ solved: !revealed, firstTry: clean }))
+      .then((node) => {
+        if (node && thisRun === run) append(result, node);
+      })
+      .catch(() => {});
     renderActions();
     renderFacts();
   };
@@ -293,6 +319,7 @@ export function mountTrainer(container, spec) {
   );
   reset();
   return () => {
+    abandon();
     timers.forEach(clearTimeout);
     document.removeEventListener("keydown", onKey);
   };

@@ -162,6 +162,7 @@ def test_frontend_is_served(client: TestClient) -> None:
         "history.js", "insights.js", "styles.css", "vendor/chess.js", "pieces/wK.svg",
         "views/dashboard.js", "views/games.js", "views/game.js", "views/puzzles.js",
         "views/puzzle.js", "views/stats.js", "views/import.js", "views/library-puzzle.js",
+        "views/library-card.js", "views/recommended.js", "views/opening.js", "views/repeated.js",
         "trainer.js",
     ]  # fmt: skip
     for asset in assets:

@@ -334,3 +334,56 @@ class LibraryPuzzleOut(BaseModel):
     themes: list[str]
     game_url: str
     opening_tags: list[str]
+
+
+# --- Personal training (recommended library puzzles) ---------------------------
+
+
+class PuzzleRatingOut(ApiModel):
+    rating: float
+    deviation: float = Field(description="Glicko rating deviation: how unsure the rating is.")
+    rated_attempts: int
+    seeded: bool = Field(description="True until a puzzle is rated: an estimate from game ratings.")
+
+
+class FocusOut(ApiModel):
+    group: str = Field(description="tactic, opening, phase or level.")
+    key: str
+    title: str
+    reason: str = Field(description="Why this is trained, in words.")
+    weight: float
+    theme: str | None
+    opening: str | None
+
+
+class TrainingProgressOut(ApiModel):
+    puzzles: int = Field(description="Distinct library puzzles attempted.")
+    solved: int
+    first_try: int
+
+
+class TrainingProfileOut(ApiModel):
+    rating: PuzzleRatingOut
+    foci: list[FocusOut]
+    mistakes: int = Field(description="Mistakes and blunders the profile is drawn from.")
+    games: int
+    progress: TrainingProgressOut
+    library_size: int
+
+
+class RecommendationOut(BaseModel):
+    puzzle: LibraryPuzzleOut
+    focus: FocusOut
+
+
+class LibraryAttemptIn(BaseModel):
+    puzzle_id: str = Field(max_length=10)
+    solved: bool = Field(description="Finished without having the solution shown.")
+    first_try: bool = Field(description="Solved with no wrong move and no hint.")
+
+
+class LibraryAttemptOut(ApiModel):
+    rated: bool = Field(description="False for a repeat attempt at the same puzzle.")
+    rating_before: float
+    rating_after: float
+    deviation: float

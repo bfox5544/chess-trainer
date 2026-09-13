@@ -8,7 +8,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from chess_trainer.db.models import LibraryPuzzle, LibraryTheme
+from chess_trainer.db.models import LibraryAttempt, LibraryPuzzle, LibraryTheme
 from chess_trainer.library.parse import LibraryRow, RowFilter, parse_record, read_records
 
 UPDATABLE = (
@@ -130,6 +130,8 @@ class LibraryFilters:
     rating_min: int | None = None
     rating_max: int | None = None
     theme: str | None = None
+    opening: str | None = None  # an opening tag, e.g. "Caro-Kann_Defense"
+    unseen_by: int | None = None  # leave out puzzles this user has attempted
 
 
 def library_size(session: Session) -> int:
@@ -149,6 +151,13 @@ def filter_conditions(filters: LibraryFilters, exclude: Iterable[str] = ()) -> l
         conditions.append(LibraryPuzzle.rating <= filters.rating_max)
     if filters.theme:
         conditions.append(LibraryPuzzle.themes.contains([filters.theme]))
+    if filters.opening:
+        conditions.append(LibraryPuzzle.opening_tags.contains([filters.opening]))
+    if filters.unseen_by is not None:
+        attempted = select(LibraryAttempt.puzzle_id).where(
+            LibraryAttempt.user_id == filters.unseen_by
+        )
+        conditions.append(LibraryPuzzle.id.not_in(attempted))
     excluded = list(exclude)
     if excluded:
         conditions.append(LibraryPuzzle.id.not_in(excluded))

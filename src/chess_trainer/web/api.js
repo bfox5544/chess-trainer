@@ -14,6 +14,8 @@ async function request(method, path, body) {
       method,
       headers: body ? { "content-type": "application/json" } : {},
       body: body ? JSON.stringify(body) : undefined,
+      // Lets a save sent while leaving the page (an abandoned puzzle) finish.
+      keepalive: method === "POST",
     });
   } catch {
     throw new ApiError("Can't reach the Chess Trainer server. Check that it is still running.", 0);
@@ -71,4 +73,8 @@ export const api = {
   librarySample: (filters = {}) => request("GET", `/library/puzzles${query({ limit: 12, ...filters })}`),
   libraryRandom: (filters = {}) => request("GET", `/library/puzzles/random${query(filters)}`),
   libraryPuzzle: (puzzleId) => request("GET", `/library/puzzles/${encodeURIComponent(puzzleId)}`),
+  puzzleRating: (userId) => request("GET", `/users/${userId}/puzzle-rating`),
+  training: (userId) => request("GET", `/users/${userId}/training`),
+  recommended: (userId, options = {}) => request("GET", `/users/${userId}/recommended-puzzles${query({ limit: 12, ...options })}`),
+  libraryAttempt: (userId, attempt) => request("POST", `/users/${userId}/library-attempts`, attempt),
 };
