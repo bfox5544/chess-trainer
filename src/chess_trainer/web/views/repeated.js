@@ -5,6 +5,7 @@
 import { api } from "../api.js";
 import { Board, checkedKingSquare } from "../board.js";
 import { append, clear, formatDate, h, plural, titleCase } from "../dom.js";
+import { createPlayOn } from "../playon.js";
 import { button, chip, colorDot, emptyState, kindBadge, pageHeader, panel, reasonList, select } from "../ui.js";
 import { Chess } from "../vendor/chess.js";
 import { arrowOf } from "./game.js";
@@ -58,12 +59,15 @@ export function continuationSteps(group) {
 /**
  * The best continuation, playable on `board`: clicking a move (or stepping)
  * shows the position after it; step -1 is the mistake position with its arrows.
- * Returns { element, go(index), step(direction), at() } or null without a line.
+ * From any of those positions "Play on from here" lets you carry on against
+ * the engine with your moves scored (playon.js).
+ * Returns { element, go(index), step(direction), redraw(), stop() }.
  */
 export function continuation(group, board) {
-  const steps = continuationSteps(group);
-  if (steps.length < 2) return null;
+  const found = continuationSteps(group);
+  const steps = found.length > 1 ? found : []; // a single move is already shown as the better move
   let at = -1;
+  const play = createPlayOn({ board, exitLabel: "Back to the line", onExit: () => go(at) });
   const cells = steps.map((step, i) =>
     h(
       "button",
@@ -76,8 +80,26 @@ export function continuation(group, board) {
   const forward = button("", { icon: "next", "aria-label": "Next move of the line", title: "Next move (→)", onclick: () => go(at + 1) });
   const reset = button("Back to the mistake", { icon: "retry", variant: "ghost", onclick: () => go(-1) });
 
+  const playButton = button("Play on from here", {
+    icon: "arrow",
+    title: "Carry on against the engine; your moves are scored like in game analysis",
+    onclick: () => {
+      browse.hidden = true;
+      play.start(at < 0 ? group.fen : steps[at].fen, group.color);
+    },
+  });
+  const browse = h(
+    "div",
+    {},
+    steps.length ? [h("p", { class: "result-why" }, "Best continuation"), h("div", { class: "line-moves" }, cells)] : null,
+    h("div", { class: "continuation-controls" }, steps.length ? [back, forward] : null, playButton, reset),
+  );
+
   function go(index) {
+    play.stop(true);
+    browse.hidden = false;
     at = Math.min(Math.max(index, -1), steps.length - 1);
+    board.setBadge(null);
     if (at < 0) {
       board.setPosition(group.fen);
       board.setMarks({});
@@ -94,15 +116,16 @@ export function continuation(group, board) {
     reset.hidden = at < 0;
   }
 
-  const element = h(
-    "div",
-    { class: "continuation" },
-    h("p", { class: "result-why" }, "Best continuation"),
-    h("div", { class: "line-moves" }, cells),
-    h("div", { class: "continuation-controls" }, back, forward, reset),
-  );
+  const element = h("div", { class: "continuation" }, browse, play.element);
   go(-1);
-  return { element, go, step: (direction) => go(at + direction), at: () => at };
+  return {
+    element,
+    go,
+    // While playing on, the arrow keys and a board flip leave the game alone.
+    step: (direction) => play.active() || go(at + direction),
+    redraw: () => play.active() || go(at),
+    stop: () => play.stop(true),
+  };
 }
 
 /** One line in a list of repeated mistakes. */
@@ -182,11 +205,14 @@ export async function renderRepeated(container, context) {
   const filters = { time_class: context.query.time_class || "", account_id: context.query.account_id || "" };
   const body = h("div");
   let keys = null; // key -> action, once groups are shown
+  let stop = null; // ends "play on", if running
 
   const load = async () => {
     const groups = await api.repeatedMistakes(user.id, { ...filters, limit: 50 });
+    stop?.();
     const shown = repeatedBody(groups, filters, context.query.key);
     keys = shown.keys;
+    stop = shown.stop || null;
     clear(body);
     append(body, shown.view);
   };
@@ -220,7 +246,10 @@ export async function renderRepeated(container, context) {
   };
   document.addEventListener("keydown", onKey);
   await load();
-  return () => document.removeEventListener("keydown", onKey);
+  return () => {
+    stop?.();
+    document.removeEventListener("keydown", onKey);
+  };
 }
 
 function repeatedBody(groups, filters, wantedKey) {
@@ -246,12 +275,8 @@ function repeatedBody(groups, filters, wantedKey) {
     current = (index + groups.length) % groups.length;
     const group = groups[current];
     board.setOrientation(group.color);
+    line?.stop();
     line = continuation(group, board);
-    if (!line) {
-      board.setPosition(group.fen);
-      board.setMarks({});
-      board.setArrows(repeatedArrows(group));
-    }
     clear(caption).append(colorDot(group.color), h("strong", {}, `${titleCase(group.color)} to move`), h("span", { class: "muted" }, `Mistake ${current + 1} of ${groups.length}`));
     clear(coach).append(...repeatedCoach(group, { gameLink: (o) => ({ href: `#/games/${o.game_id}/${o.ply}` }), line }).filter(Boolean));
     rows.forEach((row, i) => row.classList.toggle("selected", i === current));
@@ -282,13 +307,14 @@ function repeatedBody(groups, filters, wantedKey) {
         button("Previous", { icon: "prev", title: "Previous mistake (↑)", onclick: () => show(current - 1) }),
         button("Next mistake", { icon: "skip", variant: "primary", title: "Next mistake (↓)", onclick: () => show(current + 1) }),
       ),
-      h("p", { class: "muted small" }, "Red arrows: what you played. Green: the better move. ← → play through the best continuation, ↑ ↓ change mistake."),
+      h("p", { class: "muted small" }, "Red arrows: what you played. Green: the better move. ← → play through the best continuation, ↑ ↓ change mistake. \"Play on from here\" lets you continue against the engine with your moves scored."),
     ),
     h("div", { class: "analysis-side" }, panel(null, coach), panel(`All repeated mistakes (${groups.length})`, list)),
   );
   show(current);
   return {
     view,
+    stop: () => line?.stop(),
     keys: {
       ArrowUp: () => show(current - 1),
       ArrowDown: () => show(current + 1),

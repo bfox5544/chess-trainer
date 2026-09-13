@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from chess_trainer.accounts.service import create_user, link_account
 from chess_trainer.analysis.openings import load_opening_book
 from chess_trainer.api.app import create_app
-from chess_trainer.api.deps import get_session
+from chess_trainer.api.deps import SharedEngine, get_session, get_shared_engine
 from chess_trainer.config import Settings, get_settings
 from chess_trainer.db.enums import Platform
 from chess_trainer.db.models import ChessAccount, Game
@@ -52,9 +52,11 @@ def job_context(settings: Settings, engine: FakeEngine, scholars_source: StubSou
 
 
 @pytest.fixture
-def client(session: Session, settings: Settings) -> Iterator[TestClient]:
+def client(session: Session, settings: Settings, engine: FakeEngine) -> Iterator[TestClient]:
     app = create_app()
+    shared = SharedEngine(lambda: engine)
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_shared_engine] = lambda: shared
     with TestClient(app) as test_client:
         yield test_client

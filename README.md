@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 265 tests; integration tests need `docker compose up -d`
+uv run pytest             # 271 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -79,6 +79,8 @@ uv run ruff check .
 | `GET /library/puzzles` | A random sample of library puzzles (`rating_min`, `rating_max`, `theme`, `limit` ≤ 50) |
 | `GET /library/puzzles/random` | A random library puzzle (`rating_min`, `rating_max`, `theme`, `exclude`) |
 | `GET /library/puzzles/{id}` | One library puzzle, with the setup move and solution in SAN |
+| `POST /analysis/move` | Score a move played in any position (`fen`, `uci`) as game analysis would: classification, win-chance loss, better move, reasons, and the engine's reply |
+| `POST /analysis/reply` | The engine's move in a position (`fen`); null when the game is over |
 | `GET /users/{id}/puzzle-rating` | Your rating on the Lichess puzzle scale (an estimate from game ratings until a puzzle is rated) |
 | `GET /users/{id}/training` | What you should train and why: tactics you miss or allow, openings you play, phases where you go wrong, plus rating and progress |
 | `GET /users/{id}/recommended-puzzles` | Library puzzles picked for you: near your puzzle rating, not attempted before, each with the focus it trains (`limit` ≤ 30, `exclude`) |
@@ -95,8 +97,8 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 |---|---|
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
-| Puzzles | Three sources: puzzles from your own mistakes (with solved/unsolved tracking); "For you", Lichess puzzles picked from your puzzle rating, the tactics you miss or allow in your games and the openings you play, with the reasons listed; and the Lichess database browsed by difficulty and theme. Solve by clicking or dragging; finished Lichess puzzles move your puzzle rating. |
-| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one |
+| Puzzles | Three sources: puzzles from your own mistakes (with solved/unsolved tracking); "For you", Lichess puzzles picked from your puzzle rating, the tactics you miss or allow in your games and the openings you play, with the reasons listed; and the Lichess database browsed by difficulty and theme. Solve by clicking or dragging; finished Lichess puzzles move your puzzle rating. After any puzzle, "Keep playing" carries on against the engine with each of your moves scored as in game analysis |
+| Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one, its best continuation, and "Play on from here" to continue against the engine with your moves scored |
 | Import | Link accounts and import; progress shows as a banner on every page |
 
 **Design system.** One stylesheet (`styles.css`) built on tokens: an ebony
@@ -393,6 +395,29 @@ the command line; both call `library/store.import_library`.
   trainer a tactic pick only says "From your mistakes" until the puzzle is
   finished, because naming the tactic gives the answer away.
 
+### Playing on: live scoring uses the analysis code
+
+After a puzzle, or from a repeated mistake, you can keep playing against the
+engine (`web/playon.js`). Each move goes to `POST /analysis/move`, which runs
+the same functions game analysis runs (`win_pct_loss`, `classify`,
+`explain_move`, the same thresholds), so a move gets the verdict it would
+get in an analyzed game. The differences are forced by there being no game:
+no opening book, clock or phase.
+
+- **The API process has its own engine** (`api/deps.SharedEngine`), started
+  on the first request that needs it and guarded by a lock, because a UCI
+  engine searches one position at a time. The worker keeps its own. A
+  queued job would add a second of polling to every move.
+- **Same depth as game analysis** (`LIVE_DEPTH`, defaulting to
+  `ANALYSIS_DEPTH`), so a verdict matches what the analysis would say and
+  the engine's reply is the top move the analysis would show. A new position
+  still answers in under a second. Evaluations go through the shared cache:
+  positions from your analyzed games are already there, and each new
+  position is searched once (your move's "after" is the next move's
+  "before").
+- **The engine always answers with its top move** at that depth. It is a
+  sparring partner for checking your ideas, not an opponent at your level.
+
 ### One time-class formula for both platforms
 
 Lichess and Chess.com draw the bullet/blitz/rapid lines differently. Every
@@ -510,6 +535,9 @@ Not built, but the current design was shaped so these fit without rework:
 - Recommendations need a large library: with 10,000 puzzles loaded, few
   match a rating window plus a tactic or opening, and picks fall back to
   "at your level". Load 500,000 or more for close matches.
+- Playing on needs Stockfish on the machine running the API (not only the
+  worker); without it the request fails with a 503 and the page says so.
+  Promotions while playing on are always to a queen.
 - The puzzle rating's starting point is rough (see the design note); it
   takes about ten puzzles to settle.
 - The worker runs one job at a time, so loading the full puzzle database

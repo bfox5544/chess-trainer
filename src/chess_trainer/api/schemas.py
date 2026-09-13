@@ -387,3 +387,51 @@ class LibraryAttemptOut(ApiModel):
     rating_before: float
     rating_after: float
     deviation: float
+
+
+# --- Live move scoring ("keep playing") ----------------------------------------
+
+
+class PositionIn(BaseModel):
+    fen: str = Field(max_length=100)
+
+
+class MoveScoreIn(PositionIn):
+    uci: str = Field(pattern=r"^[a-h][1-8][a-h][1-8][qrbn]?$")
+
+
+class EngineMoveOut(ApiModel):
+    uci: str
+    san: str
+    fen_after: str
+
+
+class EngineReplyOut(BaseModel):
+    move: EngineMoveOut | None = Field(description="Null when the game is over.")
+
+
+class MoveScoreOut(ApiModel):
+    """The fields of an analyzed game move that exist without a game."""
+
+    uci: str
+    san: str
+    color: Color
+    move_number: int
+    fen_before: str
+    fen_after: str
+    classification: Classification
+    is_best: bool
+    is_forced: bool
+    in_book: bool
+    win_pct_before: float = Field(description="The mover's winning chances before the move.")
+    win_pct_after: float
+    win_pct_loss: float
+    eval_after_cp: int | None = Field(description="White's point of view.")
+    eval_after_mate: int | None
+    best_move_uci: str | None
+    best_move_san: str | None
+    best_line: list[str]
+    explanation: list[ReasonOut]
+    reply: EngineMoveOut | None = Field(
+        description="The engine's answer, so play can continue; null when the game is over."
+    )

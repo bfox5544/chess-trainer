@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     engine_eval_file: str | None = None
     analysis_depth: int = 16
     puzzle_depth: int | None = None
+    # Depth for scoring moves live and for the engine's replies ("keep
+    # playing" after a puzzle). Unset means the game-analysis depth, so the
+    # engine plays the same top move the analysis would show.
+    live_depth: int | None = None
 
     # Move classification: win-probability points lost (0-100 scale).
     inaccuracy_threshold: float = 5.0
@@ -81,6 +85,10 @@ class Settings(BaseSettings):
     @property
     def effective_puzzle_depth(self) -> int:
         return self.puzzle_depth or self.analysis_depth
+
+    @property
+    def effective_live_depth(self) -> int:
+        return self.live_depth or self.analysis_depth
 
 
 @lru_cache

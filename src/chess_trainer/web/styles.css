@@ -466,6 +466,10 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .opening-explorer .coach-meta .btn-ghost:last-child { margin-left: auto; }
 button.game-row { width: calc(100% + 16px); border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
 .game-row.selected { background: var(--surface-3); }
+[hidden] { display: none !important; }
+.play-on .coach { min-height: 96px; }
+.play-on .line-moves .move { cursor: default; }
+.play-on .line-moves .move.muted { font-weight: 500; }
 .continuation { margin: var(--space-3) 0; }
 .continuation .line-moves { margin-bottom: var(--space-2); }
 .continuation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }

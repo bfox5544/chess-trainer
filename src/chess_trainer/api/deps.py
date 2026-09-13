@@ -1,11 +1,14 @@
 """FastAPI dependencies."""
 
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from chess_trainer.analysis.engine import Engine, StockfishEngine
 from chess_trainer.config import Settings, get_settings
 from chess_trainer.db.models import ChessAccount, User
 from chess_trainer.db.session import get_sessionmaker
@@ -43,3 +46,40 @@ def load_account(account_id: int, session: SessionDep) -> ChessAccount:
 
 UserDep = Annotated[User, Depends(load_user)]
 AccountDep = Annotated[ChessAccount, Depends(load_account)]
+
+
+class SharedEngine:
+    """One engine for the API process, for scoring moves live. Started on
+    first use (most requests never need it) and used by one request at a
+    time: a UCI engine searches one position at a time."""
+
+    def __init__(self, factory: Callable[[], Engine]) -> None:
+        self._factory = factory
+        self._engine: Engine | None = None
+        self.lock = threading.Lock()
+
+    def get(self) -> Engine:
+        """Call with `lock` held."""
+        if self._engine is None:
+            self._engine = self._factory()
+        return self._engine
+
+    def discard(self) -> None:
+        """Forget a crashed engine so the next request starts a new one."""
+        self._engine = None
+
+
+@lru_cache
+def get_shared_engine() -> SharedEngine:
+    settings = get_settings()
+    return SharedEngine(
+        lambda: StockfishEngine(
+            settings.stockfish_path,
+            settings.engine_threads,
+            settings.engine_hash_mb,
+            settings.engine_eval_file,
+        )
+    )
+
+
+EngineDep = Annotated[SharedEngine, Depends(get_shared_engine)]

@@ -93,7 +93,7 @@ export async function renderOpening(container, context) {
 
   function draw() {
     if (mode === "repeat") {
-      if (repeatLine) return repeatLine.go(repeatLine.at());
+      if (repeatLine) return repeatLine.redraw();
       const group = repeated[repeatIndex];
       board.setPosition(group.fen);
       board.setMarks({});
@@ -160,7 +160,14 @@ export async function renderOpening(container, context) {
     }),
   );
 
+  /** Leave a repeated mistake, ending "play on" if it is running. */
+  const leaveRepeat = () => {
+    repeatLine?.stop();
+    repeatLine = null;
+  };
+
   function showLine(index = line.steps.length - 1) {
+    leaveRepeat();
     mode = "line";
     selected = null;
     report = null;
@@ -176,6 +183,7 @@ export async function renderOpening(container, context) {
   // --- Your games -------------------------------------------------------------
 
   async function openGame(index, ply = null) {
+    leaveRepeat();
     mode = "game";
     repeatRows.forEach((row) => row.classList.remove("selected"));
     selected = index;
@@ -247,6 +255,7 @@ export async function renderOpening(container, context) {
     setGameInUrl(null);
     if (board.orientation !== group.color) board.setOrientation(group.color);
     clear(caption).append(colorDot(group.color), h("strong", {}, `${titleCase(group.color)} to move`), h("span", { class: "muted" }, `Repeated mistake ${repeatIndex + 1} of ${repeated.length}`));
+    repeatLine?.stop();
     repeatLine = continuation(group, board);
     draw();
     const gameLink = (occurrence) => {
@@ -482,6 +491,7 @@ export async function renderOpening(container, context) {
   if (startGame >= 0) openGame(startGame);
   else showLine();
   return () => {
+    leaveRepeat();
     loadToken += 1;
     document.removeEventListener("keydown", onKey);
   };

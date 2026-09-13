@@ -65,6 +65,14 @@ export class Board {
     if (interactive) this.enablePointer();
   }
 
+  /** Turn clicks and drags on or off after construction (e.g. to lend the board to "keep playing"). */
+  setInteractive(interactive, onSquare = null) {
+    this.interactive = interactive;
+    this.onSquare = interactive ? onSquare : null;
+    this.element.classList.toggle("interactive", interactive);
+    if (interactive) this.enablePointer();
+  }
+
   build() {
     this.grid.replaceChildren();
     this.squares.clear();
@@ -184,6 +192,8 @@ export class Board {
   // that ends on another square reports that one too. The caller's selection
   // logic therefore handles both styles with no special cases.
   enablePointer() {
+    if (this.pointerEnabled) return; // listeners are added once; `onSquare` decides what they do
+    this.pointerEnabled = true;
     let drag = null;
     const squareAt = (x, y) => document.elementFromPoint(x, y)?.closest?.(".sq")?.dataset.square || null;
 

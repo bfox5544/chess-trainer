@@ -22,6 +22,7 @@
 import { Board, checkedKingSquare } from "./board.js";
 import { append, clear, formatDate, h, plural, titleCase } from "./dom.js";
 import { loadHistory, recordAttempt } from "./history.js";
+import { createPlayOn } from "./playon.js";
 import { icon } from "./icons.js";
 import { button, notice, panel } from "./ui.js";
 import { Chess } from "./vendor/chess.js";
@@ -48,6 +49,21 @@ export function mountTrainer(container, spec) {
   const board = new Board({ orientation: spec.userColor, interactive: true, onSquare: (square) => onSquare(square) });
 
   let chess, step, selected, targets, wrongTries, hints, finished, revealed, timers, lastMove, waiting;
+  // Once finished, the board can be lent out to play the position on.
+  const playOn = createPlayOn({
+    board,
+    exitLabel: "Back to the puzzle",
+    onExit: () => {
+      setPlaying(false);
+      draw();
+    },
+  });
+  const setPlaying = (playing) => [feedback, actions, result].forEach((part) => (part.hidden = playing));
+  const keepPlaying = () => {
+    setPlaying(true);
+    playOn.start(chess.fen(), spec.userColor);
+  };
+
   let run = 0; // counts restarts, so a late onAttempt result is not shown on a new run
   let reported = true; // whether this run's outcome has been passed to onAttempt
 
@@ -114,6 +130,7 @@ export function mountTrainer(container, spec) {
         actions,
         hasNext ? button("Next puzzle", { variant: "primary", icon: "next", onclick: goNext }) : null,
         button("Try again", { icon: "retry", onclick: reset }),
+        chess.isGameOver() ? null : button("Keep playing", { icon: "arrow", title: "Play on from here; your moves are scored like in game analysis", onclick: keepPlaying }),
         spec.finishedLinks ? spec.finishedLinks() : null,
       );
       return;
@@ -133,6 +150,8 @@ export function mountTrainer(container, spec) {
   };
 
   function reset() {
+    playOn.stop(true);
+    setPlaying(false);
     if (run) abandon();
     run += 1;
     reported = false;
@@ -312,6 +331,7 @@ export function mountTrainer(container, spec) {
         feedback,
         h("div", { class: "progress-line" }, pips, lineBox),
         actions,
+        playOn.element,
         result,
         factsBox,
       ),
@@ -319,6 +339,7 @@ export function mountTrainer(container, spec) {
   );
   reset();
   return () => {
+    playOn.stop(true);
     abandon();
     timers.forEach(clearTimeout);
     document.removeEventListener("keydown", onKey);
