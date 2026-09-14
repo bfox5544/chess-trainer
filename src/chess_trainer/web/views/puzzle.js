@@ -20,6 +20,7 @@ export async function renderPuzzle(container, context, puzzleId) {
     userId: user.id,
     fen: puzzle.fen,
     setup: null,
+    lastMove: puzzle.last_move,
     userColor: puzzle.user_color,
     solution: puzzle.solution,
     title: `Puzzle ${position + 1} of ${ids.length}`,

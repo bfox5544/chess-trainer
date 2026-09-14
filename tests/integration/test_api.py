@@ -136,6 +136,7 @@ def test_puzzles_are_listed_and_fetchable(client: TestClient, user_id: int, anal
 
     fetched = client.get(f"/puzzles/{listed['id']}").json()
     assert fetched.pop("explanation")
+    assert fetched.pop("last_move") == {"uci": "d1h5", "san": "Qh5"}
     assert fetched == listed
     assert client.get(f"/users/{user_id}/puzzles?phase=endgame").json() == []
 
@@ -215,6 +216,8 @@ def test_moves_and_puzzles_carry_explanations(
     (listed,) = client.get(f"/users/{user_id}/puzzles").json()
     puzzle = client.get(f"/puzzles/{listed['id']}").json()
     assert [r["code"] for r in puzzle["explanation"]] == ["allows_mate"]
+    # the opponent's move that led to the puzzle position
+    assert puzzle["last_move"] == {"uci": moves[4]["uci"], "san": moves[4]["san"]}
 
 
 def test_opening_explorer(client: TestClient, user_id: int, analyzed: int) -> None:

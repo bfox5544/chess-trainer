@@ -6,6 +6,7 @@
 //   historyKey, userId,
 //   fen,                      // position the puzzle starts from
 //   setup: {uci} | null,      // opponent move played before the solver's turn
+//   lastMove: {uci, san} | null, // opponent move already on the board at `fen`
 //   userColor, solution: [{uci, san, by: "user"|"opponent"}],
 //   title, subtitle, back: {href, label}, prevHref, nextHref | onNext(),
 //   firstTryText,             // shown when solved cleanly
@@ -146,7 +147,10 @@ export function mountTrainer(container, spec) {
   const yourTurn = () => {
     waiting = false;
     renderActions();
-    say("info", `${titleCase(spec.userColor)} to move`, userSteps > 1 ? `Find the best move. ${userSteps} moves to find in total.` : "Find the best move.");
+    const played = spec.setup?.san || spec.lastMove?.san;
+    const opponent = spec.userColor === "white" ? "Black" : "White";
+    const find = userSteps > 1 ? `Find the best move. ${userSteps} moves to find in total.` : "Find the best move.";
+    say("info", `${titleCase(spec.userColor)} to move`, played ? `${opponent} just played ${played}. ${find}` : find);
   };
 
   function reset() {
@@ -159,7 +163,7 @@ export function mountTrainer(container, spec) {
     timers = [];
     chess = new Chess(spec.fen);
     [step, wrongTries, hints, finished, revealed] = [0, 0, 0, false, false];
-    [selected, targets, lastMove] = [null, [], []];
+    [selected, targets, lastMove] = [null, [], spec.lastMove ? squaresOf(spec.lastMove.uci) : []];
     waiting = Boolean(spec.setup);
     board.setArrows([]);
     clear(result);

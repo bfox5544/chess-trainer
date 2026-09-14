@@ -8,6 +8,7 @@ from chess_trainer.api.schemas import (
     GameReportOut,
     JobOut,
     JobSummary,
+    LastMoveOut,
     MoveOut,
     PuzzleDetailOut,
     ReasonOut,
@@ -16,7 +17,7 @@ from chess_trainer.api.schemas import (
 from chess_trainer.db.enums import PuzzleStatus
 from chess_trainer.db.models import Job, Puzzle
 from chess_trainer.jobs import queue
-from chess_trainer.reports.game_report import build_game_report, explain_ply
+from chess_trainer.reports.game_report import build_game_report, explain_ply, move_at
 
 router = APIRouter()
 
@@ -56,12 +57,16 @@ def game_analysis(game_id: int, session: SessionDep) -> GameReportOut:
 @router.get("/puzzles/{puzzle_id}", response_model=PuzzleDetailOut, tags=["puzzles"])
 def puzzle(puzzle_id: int, session: SessionDep) -> PuzzleDetailOut:
     """Everything a client needs to present and check a puzzle: the start
-    position, whose move it is, the full solution line, and why the move
-    played in the game was a mistake."""
+    position, the opponent's move that led to it, whose move it is, the full
+    solution line, and why the move played in the game was a mistake."""
     found = session.get(Puzzle, puzzle_id)
     if found is None or found.status is not PuzzleStatus.ACCEPTED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"puzzle {puzzle_id} not found")
     reasons = explain_ply(session, found.game_id, found.ply)
+    previous = move_at(session, found.game_id, found.ply - 1)
     return PuzzleDetailOut.model_validate(found).model_copy(
-        update={"explanation": [ReasonOut.model_validate(r) for r in reasons]}
+        update={
+            "explanation": [ReasonOut.model_validate(r) for r in reasons],
+            "last_move": LastMoveOut.model_validate(previous) if previous else None,
+        }
     )

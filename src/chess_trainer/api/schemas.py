@@ -286,7 +286,16 @@ class PuzzleOut(ApiModel):
     depth: int
 
 
+class LastMoveOut(ApiModel):
+    uci: str
+    san: str
+
+
 class PuzzleDetailOut(PuzzleOut):
+    last_move: LastMoveOut | None = Field(
+        default=None,
+        description="The opponent's move that led to the puzzle position; null at move one.",
+    )
     explanation: list[ReasonOut] = Field(
         default_factory=list, description="Why the game move (`played_san`) was a mistake."
     )

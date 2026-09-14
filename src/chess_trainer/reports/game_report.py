@@ -91,3 +91,9 @@ def explain_ply(session: Session, game_id: int, ply: int) -> list[Reason]:
         if move.ply == ply:
             return explain_at(moves, index)
     return []
+
+
+def move_at(session: Session, game_id: int, ply: int) -> MoveAnalysis | None:
+    """The analyzed move at `ply` of a game, if there is one."""
+    stmt = select(MoveAnalysis).where(MoveAnalysis.game_id == game_id, MoveAnalysis.ply == ply)
+    return session.scalars(stmt).first()

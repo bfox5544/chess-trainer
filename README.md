@@ -73,7 +73,7 @@ uv run ruff check .
 | `GET /users/{id}/repeated-mistakes` | Positions where you went wrong in at least `min_games` (default 2) games, most repeated first, with the moves you played, the better move, its best continuation and the games (same filters, plus `family`) |
 | `GET /users/{id}/opening?family=` | One opening: its most common entry line in your games, and your analyzed games in it with the plies where you went wrong (same filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
-| `GET /puzzles/{id}` | One puzzle: start position, side to move, full solution, and why the game move was a mistake |
+| `GET /puzzles/{id}` | One puzzle: start position, the opponent's last move, side to move, full solution, and why the game move was a mistake |
 | `GET /library` | Lichess puzzle library: how many are loaded, and counts per theme |
 | `POST /library/import` | Queue a load of the Lichess puzzle database (`limit`, default 100,000) |
 | `GET /library/puzzles` | A random sample of library puzzles (`rating_min`, `rating_max`, `theme`, `limit` ≤ 50) |
