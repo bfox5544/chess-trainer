@@ -69,6 +69,16 @@ class JobAccepted(BaseModel):
     job_id: int
 
 
+class SyncStatusOut(BaseModel):
+    interval_minutes: float | None = Field(
+        description="How often linked accounts are synced; null when automatic sync is off."
+    )
+    active_job_id: int | None = Field(
+        description="An import of this user's games whose analysis is queued or running "
+        "(automatic or not), for the client to follow; null if none."
+    )
+
+
 class JobSummary(ApiModel):
     id: int
     kind: JobKind

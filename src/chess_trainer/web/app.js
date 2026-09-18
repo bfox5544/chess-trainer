@@ -171,6 +171,19 @@ jobs.subscribe((state, event) => {
   if (event === "finished" && context.user && onListPage) route();
 });
 
+// Linked accounts are synced by the worker on a timer. Look for an import
+// whose new games are being analyzed, and follow it in the banner.
+const SYNC_CHECK_MS = 60_000;
+async function followSync() {
+  if (!context.user || jobs.active || document.hidden) return;
+  try {
+    const { active_job_id: jobId } = await api.syncStatus(context.user.id);
+    if (jobId && !jobs.active && jobId !== jobs.dismissedId) jobs.watch(jobId);
+  } catch {
+    /* server unreachable: try again next time */
+  }
+}
+
 async function start() {
   const userId = storedUserId();
   if (userId) {
@@ -183,6 +196,9 @@ async function start() {
   window.addEventListener("hashchange", route);
   jobs.resume();
   route();
+  followSync();
+  setInterval(followSync, SYNC_CHECK_MS);
+  document.addEventListener("visibilitychange", followSync);
 }
 
 start();

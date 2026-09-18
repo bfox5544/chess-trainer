@@ -73,6 +73,7 @@ export const api = {
   librarySample: (filters = {}) => request("GET", `/library/puzzles${query({ limit: 12, ...filters })}`),
   libraryRandom: (filters = {}) => request("GET", `/library/puzzles/random${query(filters)}`),
   libraryPuzzle: (puzzleId) => request("GET", `/library/puzzles/${encodeURIComponent(puzzleId)}`),
+  syncStatus: (userId) => request("GET", `/users/${userId}/sync`),
   scoreMove: (fen, uci) => request("POST", "/analysis/move", { fen, uci }),
   engineReply: (fen) => request("POST", "/analysis/reply", { fen }),
   puzzleRating: (userId) => request("GET", `/users/${userId}/puzzle-rating`),

@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 271 tests; integration tests need `docker compose up -d`
+uv run pytest             # 276 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -66,6 +66,7 @@ uv run ruff check .
 | `POST /accounts/{id}/import` | Queue an import (and, by default, analysis). Returns `202 {job_id}` |
 | `POST /accounts/{id}/analyze` | Queue (re-)analysis of stored games, optionally at a new depth |
 | `GET /jobs/{id}` | Status, progress, result, and child jobs |
+| `GET /users/{id}/sync` | Automatic sync interval, and an import of your games being analyzed right now (for the app to follow) |
 | `GET /accounts/{id}/games` | Stored games, newest first |
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
@@ -99,7 +100,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 | Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
 | Puzzles | Three sources: puzzles from your own mistakes (opening on the unsolved ones, with solved ones a click away); "For you", Lichess puzzles picked from your puzzle rating, the tactics you miss or allow in your games and the openings you play, with the reasons listed; and the Lichess database browsed by difficulty and theme. Solve by clicking or dragging; finished Lichess puzzles move your puzzle rating. After any puzzle, "Keep playing" carries on against the engine with each of your moves scored as in game analysis |
 | Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one, its best continuation, and "Play on from here" to continue against the engine with your moves scored |
-| Import | Link accounts and import; progress shows as a banner on every page |
+| Import | Link accounts and import; progress shows as a banner on every page. After the first import, new games are imported and analyzed automatically every 15 minutes |
 
 **Design system.** One stylesheet (`styles.css`) built on tokens: an ebony
 surface scale, ivory for primary actions, blue for focus and selection, and a
@@ -187,6 +188,28 @@ taking the same job. The status endpoint reads the same row.
 
 Jobs are resumable: analysis commits per game and skips games already done, so
 a crashed job (detected by a stale heartbeat) is simply re-queued.
+
+### Automatic sync: the worker imports new games on a timer
+
+Every `AUTO_SYNC_MINUTES` (15) the worker queues an ordinary import job,
+flagged `auto`, for each linked account (`jobs/scheduler.py`).
+
+- **Only accounts imported before are synced**, so linking an account never
+  starts a large import by itself.
+- **Fetched from a day before your newest stored game.** A game that finished
+  just before the last sync can reach the platform's archive late; duplicates
+  are skipped, so the overlap costs only a fetch. Chess.com serves whole
+  monthly archives, so a sync reads at most the current and previous month.
+- **One try per interval.** An account with an import queued in the last
+  interval is skipped, whatever that import's outcome, so a site that is down
+  is not hit on every poll.
+- **Quiet when nothing is new.** A sync that stores no games queues no
+  analysis. The app checks `GET /users/{id}/sync` once a minute while open,
+  and shows the banner only when new games are being analyzed; pages
+  refresh when it finishes.
+- **A timer in the worker, not cron or Celery beat**, because the worker is
+  already the one process that must run, and the jobs table already
+  records every sync.
 
 ### Mistakes are measured in win probability, not centipawns
 

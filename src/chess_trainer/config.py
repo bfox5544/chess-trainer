@@ -79,6 +79,13 @@ class Settings(BaseSettings):
 
     # Worker
     worker_poll_seconds: float = 1.0
+    # Automatic sync: the worker imports new games of every account that
+    # has been imported before, this often. 0 turns it off.
+    auto_sync_minutes: float = 15.0
+    # How often the worker checks whether a sync is due.
+    auto_sync_check_seconds: float = 60.0
+    # Most games one automatic sync imports.
+    auto_sync_max_games: int = 100
     # A running job whose heartbeat is older than this is assumed crashed.
     job_stale_seconds: float = 600.0
 

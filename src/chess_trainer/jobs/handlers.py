@@ -79,7 +79,9 @@ def run_import(session: Session, job: Job, context: JobContext) -> dict[str, obj
     result = import_games(session, account, source, filters_from(job.params))
     session.commit()
     summary = result.as_dict()
-    if job.params.get("analyze", True):
+    # An automatic sync that found nothing new has nothing to analyze.
+    nothing_new = job.params.get("auto") and not result.stored
+    if job.params.get("analyze", True) and not nothing_new:
         child = queue.enqueue(
             session,
             JobKind.ANALYZE,

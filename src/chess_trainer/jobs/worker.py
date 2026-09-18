@@ -13,10 +13,11 @@ from sqlalchemy.orm import Session
 from chess_trainer.analysis.engine import Engine, StockfishEngine
 from chess_trainer.analysis.openings import load_opening_book
 from chess_trainer.config import Settings, get_settings
+from chess_trainer.db.base import utcnow
 from chess_trainer.db.models import Job
 from chess_trainer.db.session import get_sessionmaker
 from chess_trainer.ingestion.factory import build_source
-from chess_trainer.jobs import queue
+from chess_trainer.jobs import queue, scheduler
 from chess_trainer.jobs.handlers import HANDLERS, JobContext
 
 logger = logging.getLogger(__name__)
@@ -81,10 +82,17 @@ def main() -> None:
         book=load_opening_book(),
     )
     logger.info("worker started; polling every %ss", settings.worker_poll_seconds)
+    if settings.auto_sync_minutes > 0:
+        logger.info("syncing linked accounts every %s minutes", settings.auto_sync_minutes)
+    next_sync_check = 0.0
     try:
         with get_sessionmaker()() as session:
             while True:
                 queue.requeue_stale(session, settings.job_stale_seconds)
+                if time.monotonic() >= next_sync_check:
+                    next_sync_check = time.monotonic() + settings.auto_sync_check_seconds
+                    for job in scheduler.schedule_syncs(session, settings, utcnow()):
+                        logger.info("queued sync of account %s", job.params["account_id"])
                 if not work_once(session, context):
                     time.sleep(settings.worker_poll_seconds)
     except KeyboardInterrupt:

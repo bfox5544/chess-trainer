@@ -15,6 +15,7 @@ const listeners = new Set();
 let timer = null;
 let queuedSince = null;
 let state = null; // { job, analysis, done, stuck }
+let dismissedId = null; // a job closed by the user is not picked up again
 
 function remember(jobId) {
   try {
@@ -70,9 +71,13 @@ export const jobs = {
   },
   dismiss() {
     clearTimeout(timer);
+    if (state) dismissedId = state.job.id;
     state = null;
     remember(null);
     emit("dismissed");
+  },
+  get dismissedId() {
+    return dismissedId;
   },
   get active() {
     return Boolean(state && !state.done);

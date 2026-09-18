@@ -1,7 +1,7 @@
 // Welcome (choose or create a profile) and the Import page.
 
 import { api } from "../api.js";
-import { append, clear, formatDate, h } from "../dom.js";
+import { append, clear, formatDate, h, plural } from "../dom.js";
 import { jobs } from "../jobs.js";
 import { PLATFORM_LABEL, button, emptyState, notice, pageHeader, panel, platformBadge, select } from "../ui.js";
 
@@ -137,7 +137,7 @@ export function addAccountForm(context, { importAfter = true } = {}) {
   );
 }
 
-function accountRow(account) {
+function accountRow(account, syncMinutes) {
   const error = notice("", "error");
   error.hidden = true;
   let count = 20;
@@ -190,18 +190,29 @@ function accountRow(account) {
       h("div", { class: "field-inline" }, h("span", {}, "Only"), h("div", { class: "toggle-group" }, toggles)),
       submit,
     ),
-    h("p", { class: "muted small" }, "Leave the time controls unselected to import everything. Games you already have are skipped."),
+    h(
+      "p",
+      { class: "muted small" },
+      "Leave the time controls unselected to import everything. Games you already have are skipped.",
+      syncMinutes && account.last_synced_at ? ` New games are also imported and analyzed automatically every ${plural(Math.round(syncMinutes), "minute")} while the worker runs.` : "",
+    ),
     error,
   );
 }
 
 export async function renderImport(container, context) {
   const accounts = context.user.accounts;
+  let syncMinutes = null;
+  try {
+    syncMinutes = (await api.syncStatus(context.user.id)).interval_minutes;
+  } catch {
+    /* the note about automatic sync is optional */
+  }
   append(
     container,
     pageHeader("Import games", "Pull in your recent games. Each one is analyzed move by move, and your mistakes become puzzles."),
     accounts.length
-      ? panel("Your accounts", h("div", { class: "account-list" }, accounts.map(accountRow)))
+      ? panel("Your accounts", h("div", { class: "account-list" }, accounts.map((account) => accountRow(account, syncMinutes))))
       : emptyState({
           iconName: "import",
           title: "Link your first account",

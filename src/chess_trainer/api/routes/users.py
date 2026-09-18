@@ -12,6 +12,7 @@ from chess_trainer.api.schemas import (
     OpeningExplorerOut,
     PuzzleOut,
     RepeatedMistakeOut,
+    SyncStatusOut,
     UserCreate,
     UserGameOut,
     UserOut,
@@ -19,6 +20,7 @@ from chess_trainer.api.schemas import (
 )
 from chess_trainer.db.enums import Classification, Phase, PuzzleOutcome, TimeClass
 from chess_trainer.db.models import ChessAccount, Puzzle, User
+from chess_trainer.jobs.scheduler import active_import
 from chess_trainer.puzzles.service import PuzzleFilters, list_puzzles
 from chess_trainer.reports.opening_explorer import OpeningExplorer, build_opening_explorer
 from chess_trainer.reports.repeated import RepeatedMistake, build_repeated_mistakes
@@ -53,6 +55,18 @@ def add_account(body: AccountCreate, user: UserDep, session: SessionDep) -> Ches
         return link_account(session, user, body.platform, body.username)
     except AccountAlreadyLinked as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.get("/{user_id}/sync", response_model=SyncStatusOut)
+def sync_status(user: UserDep, session: SessionDep, settings: SettingsDep) -> SyncStatusOut:
+    """Automatic sync settings, and the import to follow if new games are
+    being analyzed right now."""
+    minutes = settings.auto_sync_minutes
+    job = active_import(session, user.id)
+    return SyncStatusOut(
+        interval_minutes=minutes if minutes > 0 else None,
+        active_job_id=job.id if job else None,
+    )
 
 
 @router.get("/{user_id}/games", response_model=list[UserGameOut])
