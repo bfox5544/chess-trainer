@@ -13,7 +13,6 @@ import { LIBRARY_PREFIX, filterQuery, openRandomLibraryPuzzle } from "./library-
 import { renderRecommendedHub } from "./recommended.js";
 
 const PHASES = [["", "All"], ["opening", "Opening"], ["middlegame", "Middlegame"], ["endgame", "Endgame"]];
-const STATUSES = [["", "All"], ["unsolved", "Unsolved"], ["solved", "Solved"]];
 
 const SOURCES = [["mine", "From your games"], ["foryou", "For you"], ["lichess", "Lichess database"]];
 
@@ -52,10 +51,16 @@ export async function renderPuzzles(container, context) {
 
   let history = loadHistory(user.id);
   let phase = PHASES.some(([value]) => value === context.query.phase) ? context.query.phase : "";
-  let status = "";
+  // Open on what is left to do; solved puzzles are one click away.
+  let status = "unsolved";
   const summary = h("div", { class: "stat-row" });
   const grid = h("div", { class: "puzzle-grid" });
   const startSlot = h("span");
+  const statusSlot = h("span");
+  const setStatus = (value) => {
+    status = value;
+    render();
+  };
 
   const render = () => {
     const solved = puzzles.filter((p) => isSolved(history, p.id));
@@ -78,9 +83,33 @@ export async function renderPuzzles(container, context) {
     const visible = puzzles.filter(
       (p) => (!phase || p.phase === phase) && (!status || (status === "solved") === isSolved(history, p.id)),
     );
+    const statuses = [
+      ["unsolved", `Unsolved (${puzzles.length - solved.length})`],
+      ["solved", `Solved (${solved.length})`],
+      ["", "All"],
+    ];
+    const hadFocus = statusSlot.contains(document.activeElement);
+    clear(statusSlot).append(segmented(statuses, status, setStatus, "Status"));
+    if (hadFocus) statusSlot.querySelector('[aria-pressed="true"]')?.focus();
     clear(grid);
     if (!visible.length) {
-      append(grid, h("p", { class: "muted grid-empty" }, "No puzzles match these filters."));
+      const allDone = status === "unsolved" && solved.length === puzzles.length;
+      const text = allDone
+        ? "You've solved every puzzle from your games. "
+        : status === "solved" && !solved.length
+          ? "No solved puzzles yet. Solve one and it moves here."
+          : "No puzzles match these filters. ";
+      append(
+        grid,
+        h(
+          "p",
+          { class: "muted grid-empty" },
+          text,
+          status === "unsolved" && solved.length
+            ? h("button", { class: "link", type: "button", onclick: () => setStatus("solved") }, "Show solved puzzles")
+            : null,
+        ),
+      );
       return;
     }
     append(grid, visible.map((puzzle) => puzzleCard(puzzle, history[puzzle.id])));
@@ -95,7 +124,7 @@ export async function renderPuzzles(container, context) {
       "div",
       { class: "toolbar" },
       segmented(PHASES, phase, (value) => { phase = value; render(); }, "Game phase"),
-      segmented(STATUSES, status, (value) => { status = value; render(); }, "Status"),
+      statusSlot,
     ),
     grid,
     h(
@@ -285,6 +314,8 @@ async function renderLibraryHub(container, context) {
       return;
     }
     if (token !== sampleToken) return; // the filters changed meanwhile
+    // Only puzzles still to solve; solved ones are not offered again here.
+    sample = sample.filter((puzzle) => !isSolved(history, LIBRARY_PREFIX + puzzle.id));
     clear(grid);
     if (!sample.length) {
       append(grid, h("p", { class: "muted grid-empty" }, "No puzzles match these filters. Try another difficulty or theme, or load more puzzles."));
