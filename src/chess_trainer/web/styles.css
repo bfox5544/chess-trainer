@@ -29,6 +29,8 @@
   --accent-soft: rgba(127, 176, 255, 0.16);
 
   /* Move quality: one meaning per colour, everywhere */
+  --c-brilliant: #3cc9c0;
+  --c-great: #6f9fe6;
   --c-best: #5cc08d;
   --c-good: #8fc3a5;
   --c-book: #b79f7c;
@@ -91,6 +93,8 @@ strong { font-weight: 650; }
 .skip-link:focus { left: 8px; }
 
 /* Move-quality colours as text and as fills */
+.cls-brilliant { color: var(--c-brilliant); }
+.cls-great { color: var(--c-great); }
 .cls-best { color: var(--c-best); }
 .cls-good { color: var(--c-good); }
 .cls-book { color: var(--c-book); }
@@ -492,6 +496,11 @@ button.game-row { width: calc(100% + 16px); border: 0; background: none; font: i
 .puzzle-card-body { padding: var(--space-3); display: grid; gap: 4px; }
 .puzzle-card-title { display: flex; align-items: center; gap: 6px; font-weight: 650; }
 .puzzle-card-note { color: var(--accent); }
+.highlight-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.highlight-legend li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.highlight-check { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.more:empty { display: none; }
+.more { display: flex; justify-content: center; }
 .focus-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4) var(--space-5); }
 .focus-group-title { margin: 0 0 var(--space-2); font-size: 0.95rem; }
 .focus-list { display: grid; gap: var(--space-2); }

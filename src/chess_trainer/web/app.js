@@ -10,6 +10,7 @@ import { button, loading, notice } from "./ui.js";
 import { renderDashboard } from "./views/dashboard.js";
 import { renderGame } from "./views/game.js";
 import { renderGames } from "./views/games.js";
+import { renderHighlights } from "./views/highlights.js";
 import { renderImport, renderWelcome } from "./views/import.js";
 import { renderLibraryPuzzle } from "./views/library-puzzle.js";
 import { renderOpening } from "./views/opening.js";
@@ -28,6 +29,7 @@ const NAV = [
 const ROUTES = {
   "": renderDashboard,
   games: (el, ctx, id, extra) => (id ? renderGame(el, ctx, id, extra) : renderGames(el, ctx)),
+  highlights: renderHighlights,
   puzzles: (el, ctx, id, extra) =>
     id === "lichess" && extra ? renderLibraryPuzzle(el, ctx, extra) : id ? renderPuzzle(el, ctx, id) : renderPuzzles(el, ctx),
   stats: (el, ctx, id) => (id === "opening" ? renderOpening(el, ctx) : id === "repeated" ? renderRepeated(el, ctx) : renderStats(el, ctx)),
@@ -79,7 +81,7 @@ function currentSection() {
 }
 
 function navLink({ route: name, label, icon: iconName }, section) {
-  const active = section === name || (name === "stats" && section === "report");
+  const active = section === name || (name === "stats" && section === "report") || (name === "games" && section === "highlights");
   return h(
     "a",
     { class: "nav-link", href: `#/${name}`, "aria-current": active ? "page" : null },
@@ -184,7 +186,7 @@ async function route() {
 }
 
 // Pages whose content changes when an import/analysis job finishes.
-const REFRESH_ON_JOB = ["", "games", "puzzles", "stats", "report", "import"];
+const REFRESH_ON_JOB = ["", "games", "highlights", "puzzles", "stats", "report", "import"];
 
 jobs.subscribe((state, event) => {
   renderJobBanner(banner);

@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { Board, checkedKingSquare, createEvalBar } from "../board.js";
 import { createEvalGraph } from "../charts.js";
 import { append, clear, formatClock, formatDate, formatEval, h, titleCase } from "../dom.js";
-import { MOVE_KINDS, button, chip, emptyState, kindBadge, moveKind, panel, reasonList } from "../ui.js";
+import { HIGHLIGHTS, MOVE_KINDS, button, chip, emptyState, kindBadge, moveKind, panel, reasonList } from "../ui.js";
 import { Chess } from "../vendor/chess.js";
 
 const ERRORS = ["inaccuracy", "mistake", "blunder"];
@@ -39,6 +39,9 @@ function explain(move, mine) {
   const after = Math.round(move.win_pct_after);
   const kind = moveKind(move);
   if (move.is_forced) return "The only legal move.";
+  // The API's first reason says what earned the mark.
+  if (kind === "brilliant") return `A sacrifice that works: ${who} winning chances stay at about ${after}%.`;
+  if (kind === "great") return "The engine's first choice, and every other move was clearly worse.";
   if (kind === "book") return "A known opening move.";
   if (kind === "best") return "The engine's first choice.";
   if (kind === "good") return `A sound move. It keeps ${who} winning chances at about ${after}%.`;
@@ -95,8 +98,8 @@ export async function renderGame(container, context, gameId, startPly) {
 
   const points = [whitePctBefore(moves[0]), ...moves.map(whitePctAfter)];
   const markers = moves
-    .map((move, index) => ({ index, kind: move.classification }))
-    .filter((marker) => ["mistake", "blunder"].includes(marker.kind));
+    .map((move, index) => ({ index, kind: moveKind(move) }))
+    .filter((marker) => ["mistake", "blunder", ...HIGHLIGHTS].includes(marker.kind));
   const graph = createEvalGraph(points, markers, (index) => show(index));
 
   const fenAfter = (index) => {
@@ -264,7 +267,7 @@ export async function renderGame(container, context, gameId, startPly) {
           sideSummary(game.black_username, "black", report.black, userColor),
         ),
         panel(null, coach),
-        panel("Winning chances", graph.element, h("p", { class: "muted small" }, "Light area is White's share. Dots mark mistakes and blunders. Click to jump.")),
+        panel("Winning chances", graph.element, h("p", { class: "muted small" }, "Light area is White's share. Dots mark mistakes, blunders, and great and brilliant moves. Click to jump.")),
         panel("Moves", moveList(moves, moveCells, show)),
       ),
     ),
@@ -339,7 +342,7 @@ export function moveList(moves, moveCells, show) {
 function moveCell(moves, index, moveCells, show) {
   const move = moves[index];
   const kind = moveKind(move);
-  const flagged = ERRORS.includes(kind);
+  const flagged = ERRORS.includes(kind) || HIGHLIGHTS.includes(kind);
   const cell = h(
     "button",
     { class: `move${flagged ? ` cls-${kind}` : ""}`, type: "button", onclick: () => show(index) },

@@ -44,6 +44,7 @@ export async function renderGames(container, context) {
             "Account",
           )
         : null,
+      button("Great and brilliant moves", { icon: "star", href: "#/highlights" }),
       button("Import games", { icon: "import", href: "#/import" }),
     ),
     list,

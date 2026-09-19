@@ -2,18 +2,30 @@
 
 from dataclasses import asdict
 
+import chess
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from chess_trainer.analysis.cache import Evaluator
 from chess_trainer.analysis.classify import Thresholds
+from chess_trainer.analysis.engine import PositionEvaluation
+from chess_trainer.analysis.highlights import (
+    HIGHLIGHTS_VERSION,
+    HighlightConfig,
+    MoveSituation,
+    is_brilliant,
+    is_great,
+    needs_second_line,
+)
 from chess_trainer.analysis.moves import GameContext, MoveRecord, build_move_records
 from chess_trainer.analysis.openings import OpeningBook
 from chess_trainer.analysis.phase import first_ply_in, game_phases
 from chess_trainer.analysis.replay import Replay, replay_pgn
+from chess_trainer.analysis.winprob import win_pct
 from chess_trainer.db.base import utcnow
-from chess_trainer.db.enums import Phase
-from chess_trainer.db.models import Game, MoveAnalysis
+from chess_trainer.db.enums import Color, Highlight, Phase
+from chess_trainer.db.models import AccountGame, Game, MoveAnalysis
 
 
 def analyze_game(
@@ -81,3 +93,65 @@ def upsert_moves(session: Session, game_id: int, records: list[MoveRecord]) -> N
         if column.name not in {"id", "game_id", "ply"}
     }
     session.execute(stmt.on_conflict_do_update(index_elements=["game_id", "ply"], set_=updatable))
+
+
+def tracked_colors(session: Session, game_id: int) -> set[Color]:
+    """The colors a linked account played in this game."""
+    stmt = select(AccountGame.color).where(AccountGame.game_id == game_id)
+    return set(session.scalars(stmt))
+
+
+def mark_highlights(
+    session: Session, game: Game, evaluator: Evaluator, config: HighlightConfig, depth: int
+) -> int:
+    """Mark the tracked accounts' great and brilliant moves in an analyzed
+    game. Only moves that could be great cost an engine search (a second
+    line). Returns how many moves were marked."""
+    colors = tracked_colors(session, game.id)
+    stmt = select(MoveAnalysis).where(MoveAnalysis.game_id == game.id).order_by(MoveAnalysis.ply)
+    moves = list(session.scalars(stmt))
+    plies = replay_pgn(game.pgn).plies if moves else []
+    marked = 0
+    for move in moves:
+        move.highlight, move.second_best_san, move.second_best_win_pct = None, None, None
+        if move.color not in colors or move.ply >= len(plies):
+            continue
+        ply = plies[move.ply]
+        situation = MoveSituation(
+            board=ply.board_before,
+            move=ply.move,
+            previous=plies[move.ply - 1].move if move.ply > 0 else None,
+            is_best=move.is_best,
+            is_forced=move.is_forced,
+            in_book=move.in_book,
+            win_pct_before=move.win_pct_before,
+            win_pct_after=move.win_pct_after,
+            win_pct_loss=move.win_pct_loss,
+        )
+        if is_brilliant(situation, config):
+            move.highlight = Highlight.BRILLIANT
+        elif needs_second_line(situation, config):
+            mark_if_great(move, situation, evaluator.evaluate(ply.board_before, depth, 2), config)
+        marked += move.highlight is not None
+    game.highlights_version = HIGHLIGHTS_VERSION
+    session.flush()
+    return marked
+
+
+def mark_if_great(
+    move: MoveAnalysis,
+    situation: MoveSituation,
+    evaluation: PositionEvaluation,
+    config: HighlightConfig,
+) -> None:
+    board, mover = situation.board, situation.board.turn
+    if len(evaluation.lines) < 2 or not evaluation.lines[1].pv:
+        return
+    best, second = evaluation.lines[0], evaluation.lines[1]
+    if best.pv[:1] != (situation.move.uci(),):  # the deeper look prefers another move
+        return
+    second_pct = win_pct(second.eval, mover)
+    if is_great(win_pct(best.eval, mover), second_pct, config):
+        move.highlight = Highlight.GREAT
+        move.second_best_san = board.san(chess.Move.from_uci(second.pv[0]))
+        move.second_best_win_pct = round(second_pct, 1)

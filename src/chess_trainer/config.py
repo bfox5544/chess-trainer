@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     mistake_threshold: float = 10.0
     blunder_threshold: float = 15.0
 
+    # Great and brilliant moves (analysis/highlights.py), in win-% points
+    # except the sacrifice, which is in pawns.
+    great_gap: float = 15.0
+    brilliant_min_sacrifice: int = 2
+    brilliant_max_loss: float = 2.0
+    highlight_min_win_pct_after: float = 35.0
+    highlight_max_win_pct_before: float = 90.0
+
     # Time pressure: clock below min(seconds, fraction * base time).
     time_pressure_seconds: float = 30.0
     time_pressure_fraction: float = 0.1

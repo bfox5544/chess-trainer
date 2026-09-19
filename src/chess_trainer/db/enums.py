@@ -28,6 +28,13 @@ class Classification(StrEnum):
     BLUNDER = "blunder"
 
 
+class Highlight(StrEnum):
+    """A good move worth showing off (see analysis/highlights.py)."""
+
+    GREAT = "great"  # the only good move
+    BRILLIANT = "brilliant"  # a sound sacrifice
+
+
 class Phase(StrEnum):
     OPENING = "opening"
     MIDDLEGAME = "middlegame"

@@ -3,10 +3,12 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import chess
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from chess_trainer.analysis.explain import MoveFacts, Reason, explain_move
+from chess_trainer.analysis.highlights import highlight_text
 from chess_trainer.analysis.winprob import Eval
 from chess_trainer.db.enums import Color
 from chess_trainer.db.models import Game, MoveAnalysis
@@ -42,7 +44,7 @@ def explain_at(moves: Sequence[MoveAnalysis], index: int) -> list[Reason]:
         following = None
     if previous is not None and previous.ply != move.ply - 1:
         previous = None
-    return explain_move(
+    reasons = explain_move(
         MoveFacts(
             fen_before=move.fen_before,
             uci=move.uci,
@@ -56,6 +58,22 @@ def explain_at(moves: Sequence[MoveAnalysis], index: int) -> list[Reason]:
             previous_uci=previous.uci if previous else None,
         )
     )
+    return [*highlight_reasons(move), *reasons]
+
+
+def highlight_reasons(move: MoveAnalysis) -> list[Reason]:
+    """Why a great or brilliant move earned its mark, listed first."""
+    if move.highlight is None:
+        return []
+    text = highlight_text(
+        move.highlight,
+        chess.Board(move.fen_before),
+        chess.Move.from_uci(move.uci),
+        move.second_best_san,
+        move.second_best_win_pct,
+        move.win_pct_after,
+    )
+    return [Reason(move.highlight.value, text)]
 
 
 def game_moves(session: Session, game_id: int) -> list[MoveAnalysis]:

@@ -58,11 +58,13 @@ export const api = {
   linkAccount: (userId, platform, username) =>
     request("POST", `/users/${userId}/accounts`, { platform, username }),
   importGames: (accountId, options) => request("POST", `/accounts/${accountId}/import`, options),
+  analyzeAccount: (accountId) => request("POST", `/accounts/${accountId}/analyze`, {}),
   job: (jobId) => request("GET", `/jobs/${jobId}`),
   userGames: (userId, filters = {}) =>
     request("GET", `/users/${userId}/games${query({ limit: 100, ...filters })}`),
   gameAnalysis: (gameId) => request("GET", `/games/${gameId}/analysis`),
   opening: (userId, filters) => request("GET", `/users/${userId}/opening${query(filters)}`),
+  highlights: (userId, filters = {}) => request("GET", `/users/${userId}/highlights${query(filters)}`),
   repeatedMistakes: (userId, filters = {}) => request("GET", `/users/${userId}/repeated-mistakes${query(filters)}`),
   report: (userId, filters = {}) => request("GET", `/users/${userId}/report${query(filters)}`),
   puzzles: (userId, filters = {}) =>

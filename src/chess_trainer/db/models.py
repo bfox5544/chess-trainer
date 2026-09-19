@@ -10,6 +10,7 @@ from chess_trainer.db.base import Base, str_enum, utcnow
 from chess_trainer.db.enums import (
     Classification,
     Color,
+    Highlight,
     JobKind,
     JobStatus,
     Phase,
@@ -84,6 +85,9 @@ class Game(Base):
     )
     analyzed_depth: Mapped[int | None]
     analyzed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    # analysis/highlights.HIGHLIGHTS_VERSION the user's moves were last checked
+    # under for great and brilliant moves; None = not yet.
+    highlights_version: Mapped[int | None]
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), default=utcnow)
 
 
@@ -174,6 +178,11 @@ class MoveAnalysis(Base):
     phase: Mapped[Phase] = mapped_column(str_enum(Phase))
     clock_remaining_s: Mapped[float | None]
     time_spent_s: Mapped[float | None]
+    # Great or brilliant; only the tracked accounts' moves are checked.
+    highlight: Mapped[Highlight | None] = mapped_column(str_enum(Highlight), index=True)
+    # The engine's second choice, searched only for moves that could be great.
+    second_best_san: Mapped[str | None] = mapped_column(sa.String(10))
+    second_best_win_pct: Mapped[float | None]
 
 
 class Job(Base):

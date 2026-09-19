@@ -6,6 +6,8 @@ import { icon } from "./icons.js";
 // One vocabulary for move quality, used by the board badge, move list, chips,
 // charts and legends, so a blunder looks the same everywhere.
 export const MOVE_KINDS = {
+  brilliant: { label: "Brilliant move", symbol: "!!" },
+  great: { label: "Great move", symbol: "!" },
   best: { label: "Best move", symbol: "★" },
   good: { label: "Good move", symbol: "✓" },
   book: { label: "Book move", symbol: "≡" },
@@ -14,7 +16,11 @@ export const MOVE_KINDS = {
   blunder: { label: "Blunder", symbol: "??" },
 };
 
+/** Great and brilliant moves: shown with their mark wherever errors are. */
+export const HIGHLIGHTS = ["brilliant", "great"];
+
 export function moveKind(move) {
+  if (move.highlight) return move.highlight;
   if (move.classification !== "good") return move.classification;
   if (move.in_book) return "book";
   return move.is_best ? "best" : "good";

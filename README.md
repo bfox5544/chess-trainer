@@ -51,7 +51,7 @@ curl localhost:8000/users/1/puzzles      # puzzles from your mistakes
 Tests and linting:
 
 ```bash
-uv run pytest             # 276 tests; integration tests need `docker compose up -d`
+uv run pytest             # 290 tests; integration tests need `docker compose up -d`
 uv run ruff check .
 ```
 
@@ -71,6 +71,7 @@ uv run ruff check .
 | `GET /users/{id}/games` | Games across all accounts with your color, result, and accuracy |
 | `GET /games/{id}/analysis` | Game report: every move classified and explained, plus per-side totals |
 | `GET /users/{id}/report` | Weakness report (`account_id`, `time_class`, `since` filters) |
+| `GET /users/{id}/highlights` | Your great and brilliant moves, newest game first (`kind`, `account_id`, `time_class`, `limit`, `offset`), with counts and the number of analyzed games not yet checked for them |
 | `GET /users/{id}/repeated-mistakes` | Positions where you went wrong in at least `min_games` (default 2) games, most repeated first, with the moves you played, the better move, its best continuation and the games (same filters, plus `family`) |
 | `GET /users/{id}/opening?family=` | One opening: its most common entry line in your games, and your analyzed games in it with the plies where you went wrong (same filters) |
 | `GET /users/{id}/puzzles` | Puzzles (`outcome`, `phase`, `severity`, `account_id`, paging) |
@@ -97,7 +98,7 @@ A single-page app in `src/chess_trainer/web/`, served by the API at `/app`
 | Page | What it does |
 |---|---|
 | Home | Accuracy and error rate, what to work on, recent games, next puzzle |
-| Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves, and the reasons each move was good or bad |
+| Analysis | Game list; each game opens on a board with an eval bar, a winning-chances graph, classified moves (great `!` and brilliant `!!` included), and the reasons each move was good or bad. "Great and brilliant moves" lists every one you have played, each opening the game at that move |
 | Puzzles | Three sources: puzzles from your own mistakes (opening on the unsolved ones, with solved ones a click away); "For you", Lichess puzzles picked from your puzzle rating, the tactics you miss or allow in your games and the openings you play, with the reasons listed; and the Lichess database browsed by difficulty and theme. Solve by clicking or dragging; finished Lichess puzzles move your puzzle rating. After any puzzle, "Keep playing" carries on against the engine with each of your moves scored as in game analysis |
 | Stats | Move quality, accuracy by game, and errors by phase, clock, and opening. Click an opening to see its line on a board and go through your games in it, stopping at each of your errors to show the move you should have played. "Mistakes you repeat" lists positions you went wrong in more than once; each opens on a board with your moves and the better one, its best continuation, and "Play on from here" to continue against the engine with your moves scored |
 | Import | Link accounts and import; progress shows as a banner on every page. After the first import, new games are imported and analyzed automatically every 15 minutes |
@@ -236,6 +237,36 @@ Edge cases, each covered by a test:
 | Position looks better after the move | Search noise; loss clamped to 0 |
 | Only one legal move | Flagged `is_forced`, never an error, excluded from reports |
 | Book moves | Flagged `in_book` but still classified (some named gambits are simply bad) |
+
+### Great and brilliant moves
+
+Labels for the good moves worth showing off, decided at analysis time
+(`analysis/highlights.py`) for the tracked accounts' moves only. Both are
+deliberately rare: across 226 games the dev profile has 51 great moves
+(about one in four games) and 10 brilliant ones (one in twenty).
+
+- **Brilliant: a sound sacrifice.** After the move the opponent can win at
+  least two points of material (an exchange or more) beyond what the move
+  took, counted with a static exchange (captures on one square, cheapest
+  piece first, either side may stop). The move must also be the engine's
+  choice or within 2 win-% points of it. Not a sacrifice: material that was
+  lost whatever the mover did (compared with the safest legal move, so a
+  rook forked with check is not "given"), or a piece left en prise while
+  the move threatens as much in return.
+- **Great: the only good move.** The mover played the engine's first choice
+  and its second choice is at least 15 win-% points worse. That needs a
+  second engine line (MultiPV 2), so it is searched only where a move could
+  be great; obvious only-moves are skipped because the second best is
+  always far worse there: recaptures, taking the piece that just moved,
+  captures that simply win material, and moving a hanging piece to safety.
+- **Neither** in book, with one legal move, when already winning (90%+), or
+  when left below 35% (an only move that keeps a lost game lost).
+
+The second engine line costs about two seconds a game. Games analyzed
+before these labels existed (or before `HIGHLIGHTS_VERSION` changes) are
+checked by the next analysis job without being re-analyzed; the page offers
+to queue that job. Thresholds are settings (`GREAT_GAP`,
+`BRILLIANT_MIN_SACRIFICE`, ...).
 
 ### Game phases
 

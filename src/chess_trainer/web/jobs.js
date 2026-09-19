@@ -1,5 +1,6 @@
-// Tracks the current background job (a game import with its analysis, or a
-// load of the Lichess puzzle database) across pages and renders its banner.
+// Tracks the current background job (a game import with its analysis, an
+// analysis on its own, or a load of the Lichess puzzle database) across pages
+// and renders its banner.
 
 import { api } from "./api.js";
 import { append, clear, h, plural } from "./dom.js";
@@ -39,7 +40,7 @@ async function poll(jobId) {
     timer = setTimeout(() => poll(jobId), POLL_MS * 2); // server briefly unreachable
     return;
   }
-  const analysis = job.children[0] || null;
+  const analysis = job.kind === "import" ? job.children[0] || null : null;
   const done =
     job.status === "failed" || (job.status === "succeeded" && (!analysis || FINISHED.includes(analysis.status)));
   const waiting = job.status === "queued" || analysis?.status === "queued";
@@ -106,6 +107,36 @@ function failureText(error, what) {
   return `The ${what} didn't finish. Try again; if it keeps failing, check the worker's log.`;
 }
 
+/** " 2 great or brilliant moves found." when there were any. */
+function highlightsFound(result) {
+  return result.highlights ? ` ${plural(result.highlights, "great or brilliant move")} found.` : "";
+}
+
+/** An analysis queued on its own: checking older games for great and brilliant moves. */
+function describeAnalysis({ job, stuck }) {
+  if (job.status === "failed") return { kind: "error", title: "Analysis failed", text: failureText(job.error, "analysis") };
+  if (job.status === "succeeded") {
+    const done = job.result || {};
+    const games = (done.analyzed ?? 0) + (done.checked_for_highlights ?? 0);
+    const failed = Object.keys(done.failed || {}).length;
+    return {
+      kind: "done",
+      title: games ? `${plural(games, "game")} checked` : "You're up to date",
+      text: (highlightsFound(done).trim() || "No new great or brilliant moves.") + (failed ? ` ${plural(failed, "game")} could not be checked.` : ""),
+    };
+  }
+  const total = job.progress_total;
+  if (job.status === "queued" || total === null) {
+    return { kind: "busy", title: "Waiting for the analysis to start…", text: stuck ? "It starts once the worker is free." : null };
+  }
+  return {
+    kind: "busy",
+    title: `Checking game ${Math.min(job.progress_done + 1, total)} of ${total}`,
+    text: "Stockfish is looking for great and brilliant moves; you can keep using the app.",
+    progress: [job.progress_done, total],
+  };
+}
+
 function describeLibrary({ job, stuck }) {
   if (job.status === "failed") return { kind: "error", title: "Loading puzzles failed", text: failureText(job.error, "puzzle download") };
   if (job.status === "succeeded") {
@@ -126,6 +157,7 @@ function describeLibrary({ job, stuck }) {
 
 function describe(state) {
   if (state.job.kind === "puzzle_library") return describeLibrary(state);
+  if (state.job.kind === "analyze") return describeAnalysis(state);
   const { job, analysis, stuck } = state;
   if (job.status === "failed") return { kind: "error", title: "Import failed", text: failureText(job.error, "import") };
   if (job.status !== "succeeded") {
@@ -146,7 +178,9 @@ function describe(state) {
       text:
         (done.analyzed
           ? `${fetched}. ${plural(done.puzzles_created ?? 0, "new puzzle")} from your mistakes.`
-          : "No new games to analyze.") + (failed ? ` ${plural(failed, "game")} could not be analyzed.` : ""),
+          : "No new games to analyze.") +
+        highlightsFound(done) +
+        (failed ? ` ${plural(failed, "game")} could not be analyzed.` : ""),
     };
   }
   const total = analysis.progress_total;

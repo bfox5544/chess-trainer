@@ -67,9 +67,11 @@ def test_import_then_analyze_end_to_end(
     assert (analyze_job.progress_done, analyze_job.progress_total) == (1, 1)
     assert analyze_job.result == {
         "analyzed": 1,
+        "checked_for_highlights": 0,
         "failed": {},
         "depth": 10,
         "puzzles_created": 1,
+        "highlights": 0,
     }
     assert session.scalars(select(Game)).one().analyzed_depth == 10
     blunders = session.scalars(

@@ -18,8 +18,9 @@ from sqlalchemy.orm import Session
 from chess_trainer.analysis.cache import EvalCache, Evaluator, get_or_create_engine_config
 from chess_trainer.analysis.classify import Thresholds
 from chess_trainer.analysis.engine import Engine
+from chess_trainer.analysis.highlights import HIGHLIGHTS_VERSION, HighlightConfig
 from chess_trainer.analysis.openings import OpeningBook
-from chess_trainer.analysis.pipeline import analyze_game
+from chess_trainer.analysis.pipeline import analyze_game, mark_highlights
 from chess_trainer.config import Settings
 from chess_trainer.db.enums import JobKind, Platform, TimeClass
 from chess_trainer.db.models import AccountGame, ChessAccount, Game, Job
@@ -59,6 +60,16 @@ class JobContext:
 def thresholds_from(settings: Settings) -> Thresholds:
     return Thresholds(
         settings.inaccuracy_threshold, settings.mistake_threshold, settings.blunder_threshold
+    )
+
+
+def highlight_config_from(settings: Settings) -> HighlightConfig:
+    return HighlightConfig(
+        great_gap=settings.great_gap,
+        min_sacrifice=settings.brilliant_min_sacrifice,
+        max_loss=settings.brilliant_max_loss,
+        min_win_pct_after=settings.highlight_min_win_pct_after,
+        max_win_pct_before=settings.highlight_max_win_pct_before,
     )
 
 
@@ -113,6 +124,22 @@ def games_needing_analysis(
     return list(session.scalars(stmt))
 
 
+def games_needing_highlights(session: Session, account_id: int, skip: set[int]) -> list[Game]:
+    """Analyzed games not yet checked for great and brilliant moves under the
+    current rules (analyzed before the check existed, or before a rule change)."""
+    stmt = (
+        select(Game)
+        .join(AccountGame, AccountGame.game_id == Game.id)
+        .where(
+            AccountGame.account_id == account_id,
+            Game.analyzed_depth.is_not(None),
+            or_(Game.highlights_version.is_(None), Game.highlights_version < HIGHLIGHTS_VERSION),
+        )
+        .order_by(Game.played_at.desc().nulls_last(), Game.id)
+    )
+    return [game for game in session.scalars(stmt) if game.id not in skip]
+
+
 def run_analyze(session: Session, job: Job, context: JobContext) -> dict[str, object]:
     """Analyze every game of an account that still needs it.
 
@@ -124,27 +151,46 @@ def run_analyze(session: Session, job: Job, context: JobContext) -> dict[str, ob
     engine = context.get_engine()
     config = get_or_create_engine_config(session, engine)
     evaluator = Evaluator(engine, EvalCache(session, config.id))
-    games = games_needing_analysis(session, int(job.params["account_id"]), depth, config.id)  # type: ignore[call-overload]
-    queue.report_progress(session, job, 0, len(games))
+    account_id = int(job.params["account_id"])  # type: ignore[call-overload]
+    games = games_needing_analysis(session, account_id, depth, config.id)
+    # Games analyzed before great and brilliant moves existed only need that check.
+    to_check = games_needing_highlights(session, account_id, {game.id for game in games})
+    work = [(game, True) for game in games] + [(game, False) for game in to_check]
+    queue.report_progress(session, job, 0, len(work))
     failed: dict[str, str] = {}
-    puzzles = 0
-    for done, game in enumerate(games, start=1):
+    analyzed = checked = puzzles = highlights = 0
+    for done, (game, full) in enumerate(work, start=1):
         try:
             # Savepoint: a game that fails rolls back alone.
             with session.begin_nested():
-                puzzles += analyze_and_make_puzzles(
-                    session, game, evaluator, context, depth, config.id
-                )
+                if full:
+                    found = analyze_and_make_puzzles(
+                        session, game, evaluator, context, depth, config.id
+                    )
+                else:
+                    found = GameFindings(0, check_highlights(session, game, evaluator, context))
+            analyzed += full
+            checked += not full
+            puzzles += found.puzzles
+            highlights += found.highlights
         except Exception as exc:
             logger.exception("analysis failed for game %s", game.id)
             failed[str(game.id)] = repr(exc)
         queue.report_progress(session, job, done)
     return {
-        "analyzed": len(games) - len(failed),
+        "analyzed": analyzed,
+        "checked_for_highlights": checked,
         "failed": failed,
         "depth": depth,
         "puzzles_created": puzzles,
+        "highlights": highlights,
     }
+
+
+@dataclass(frozen=True)
+class GameFindings:
+    puzzles: int  # accepted
+    highlights: int  # great and brilliant moves
 
 
 def analyze_and_make_puzzles(
@@ -154,13 +200,15 @@ def analyze_and_make_puzzles(
     context: JobContext,
     depth: int,
     engine_config_id: int,
-) -> int:
-    """Analyze one game, then build puzzles from it. Returns puzzles accepted."""
+) -> GameFindings:
+    """Analyze one game, mark its great and brilliant moves, then build
+    puzzles from its mistakes."""
     settings = context.settings
     analyze_game(
         session, game, evaluator, context.book, depth, thresholds_from(settings), engine_config_id
     )
-    return generate_puzzles_for_game(
+    highlights = check_highlights(session, game, evaluator, context)
+    puzzles = generate_puzzles_for_game(
         session,
         game,
         evaluator,
@@ -169,6 +217,17 @@ def analyze_and_make_puzzles(
         max(depth, settings.effective_puzzle_depth),
         engine_config_id,
     )
+    return GameFindings(puzzles, highlights)
+
+
+def check_highlights(
+    session: Session, game: Game, evaluator: Evaluator, context: JobContext
+) -> int:
+    """Mark an analyzed game's great and brilliant moves, at the depth it was
+    analyzed at."""
+    config = highlight_config_from(context.settings)
+    depth = game.analyzed_depth or context.settings.analysis_depth
+    return mark_highlights(session, game, evaluator, config, depth)
 
 
 def run_puzzle_library(session: Session, job: Job, context: JobContext) -> dict[str, object]:

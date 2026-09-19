@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from chess_trainer.db.enums import (
     Classification,
     Color,
+    Highlight,
     JobKind,
     JobStatus,
     Phase,
@@ -149,9 +150,43 @@ class MoveOut(ApiModel):
     phase: Phase
     clock_remaining_s: float | None
     time_spent_s: float | None
+    highlight: Highlight | None = Field(
+        description="Great (the only good move) or brilliant (a sound sacrifice); "
+        "only linked accounts' moves are checked."
+    )
+    second_best_san: str | None = Field(description="Set for great moves.")
+    second_best_win_pct: float | None
     explanation: list[ReasonOut] = Field(
         default_factory=list, description="Why the move was good or bad, in plain language."
     )
+
+
+class HighlightedMoveOut(ApiModel):
+    game: GameOut
+    ply: int
+    move_number: int
+    color: Color
+    san: str
+    uci: str
+    fen_before: str
+    kind: Highlight
+    win_pct_before: float
+    win_pct_after: float
+    second_best_san: str | None
+    second_best_win_pct: float | None = Field(
+        description="The mover's winning chances after the second best move (great moves)."
+    )
+    explanation: str
+
+
+class HighlightsOut(ApiModel):
+    great: int
+    brilliant: int
+    unchecked_games: int = Field(
+        description="Analyzed games not yet checked for great and brilliant moves; "
+        "the next analysis job checks them."
+    )
+    moves: list[HighlightedMoveOut] = Field(description="Newest game first.")
 
 
 class StatsOut(ApiModel):

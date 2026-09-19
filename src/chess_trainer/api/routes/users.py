@@ -9,6 +9,7 @@ from chess_trainer.api.deps import SessionDep, SettingsDep, UserDep
 from chess_trainer.api.schemas import (
     AccountCreate,
     AccountOut,
+    HighlightsOut,
     OpeningExplorerOut,
     PuzzleOut,
     RepeatedMistakeOut,
@@ -18,10 +19,11 @@ from chess_trainer.api.schemas import (
     UserOut,
     WeaknessReportOut,
 )
-from chess_trainer.db.enums import Classification, Phase, PuzzleOutcome, TimeClass
+from chess_trainer.db.enums import Classification, Highlight, Phase, PuzzleOutcome, TimeClass
 from chess_trainer.db.models import ChessAccount, Puzzle, User
 from chess_trainer.jobs.scheduler import active_import
 from chess_trainer.puzzles.service import PuzzleFilters, list_puzzles
+from chess_trainer.reports.highlights import HighlightsReport, build_highlights
 from chess_trainer.reports.opening_explorer import OpeningExplorer, build_opening_explorer
 from chess_trainer.reports.repeated import RepeatedMistake, build_repeated_mistakes
 from chess_trainer.reports.user_games import UserGame, list_user_games
@@ -132,6 +134,23 @@ def repeated_mistakes(
     `family` keeps only that opening family's games."""
     filters = WeaknessFilters(account_id=account_id, time_class=time_class, since=since)
     return build_repeated_mistakes(session, user.id, filters, family, min_games, limit)
+
+
+@router.get("/{user_id}/highlights", response_model=HighlightsOut)
+def highlights(
+    user: UserDep,
+    session: SessionDep,
+    kind: Highlight | None = None,
+    account_id: int | None = None,
+    time_class: TimeClass | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> HighlightsReport:
+    """The user's great moves (the only good move in the position) and
+    brilliant moves (a sound sacrifice), newest game first, with counts of
+    each and of analyzed games not yet checked for them."""
+    filters = WeaknessFilters(account_id=account_id, time_class=time_class)
+    return build_highlights(session, user.id, filters, kind, limit, offset)
 
 
 @router.get("/{user_id}/puzzles", response_model=list[PuzzleOut])
