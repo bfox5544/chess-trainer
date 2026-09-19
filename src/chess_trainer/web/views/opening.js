@@ -118,7 +118,7 @@ export async function renderOpening(container, context) {
     board.setArrows([]);
     board.setMarks({ lastMove: uci ? squaresOf(uci) : [], check: checkedKingSquare(new Chess(fen)) });
     const kind = move ? moveKind(move) : null;
-    board.setBadge(kind && kind !== "good" ? { square: move.uci.slice(2, 4), kind, symbol: MOVE_KINDS[kind].symbol } : null);
+    board.setBadge(kind ? { square: move.uci.slice(2, 4), kind, symbol: MOVE_KINDS[kind].symbol } : null);
   }
 
   function show(index, { compare = false } = {}) {

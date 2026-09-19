@@ -142,7 +142,7 @@ export async function renderGame(container, context, gameId, startPly) {
       board.setArrows([]);
       board.setMarks({ lastMove: move ? squaresOf(move.uci) : [], check: checkedKingSquare(new Chess(fen)) });
       const kind = move ? moveKind(move) : null;
-      board.setBadge(kind && kind !== "good" ? { square: move.uci.slice(2, 4), kind, symbol: MOVE_KINDS[kind].symbol } : null);
+      board.setBadge(kind ? { square: move.uci.slice(2, 4), kind, symbol: MOVE_KINDS[kind].symbol } : null);
     }
     const whitePct = points[current + 1];
     const label = move ? formatEval(move.eval_after_cp, move.eval_after_mate) : formatEval(moves[0].eval_before_cp, moves[0].eval_before_mate);
@@ -342,12 +342,15 @@ export function moveList(moves, moveCells, show) {
 function moveCell(moves, index, moveCells, show) {
   const move = moves[index];
   const kind = moveKind(move);
+  // Errors and great/brilliant moves colour the whole move; best and good
+  // moves get just their mark (★, ✓); book moves stay plain.
   const flagged = ERRORS.includes(kind) || HIGHLIGHTS.includes(kind);
+  const marked = kind !== "book";
   const cell = h(
     "button",
     { class: `move${flagged ? ` cls-${kind}` : ""}`, type: "button", onclick: () => show(index) },
     move.san,
-    flagged ? h("span", { class: "move-mark", title: MOVE_KINDS[kind].label }, MOVE_KINDS[kind].symbol) : null,
+    marked ? h("span", { class: `move-mark${flagged ? "" : ` cls-${kind}`}`, title: MOVE_KINDS[kind].label }, MOVE_KINDS[kind].symbol) : null,
   );
   moveCells[index] = cell;
   return cell;
