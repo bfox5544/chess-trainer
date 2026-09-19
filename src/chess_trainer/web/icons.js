@@ -23,6 +23,8 @@ const PATHS = {
   arrow: ["M5 12h14m0 0-6-6m6 6-6 6"],
   clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7v5l3 2"],
   skip: ["M5 5l9 7-9 7z", "M18 5v14"],
+  sound: ["M4 9h4l5-4v14l-5-4H4z", "M16.5 8.5a5 5 0 0 1 0 7", "M19 6a8.5 8.5 0 0 1 0 12"],
+  muted: ["M4 9h4l5-4v14l-5-4H4z", "M17 9.5l5 5m0-5-5 5"],
 };
 
 export function icon(name, size = 20) {

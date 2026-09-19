@@ -5,6 +5,7 @@ import { api } from "./api.js";
 import { append, clear, h } from "./dom.js";
 import { icon } from "./icons.js";
 import { jobs, renderJobBanner } from "./jobs.js";
+import { sound } from "./sounds.js";
 import { button, loading, notice } from "./ui.js";
 import { renderDashboard } from "./views/dashboard.js";
 import { renderGame } from "./views/game.js";
@@ -87,6 +88,24 @@ function navLink({ route: name, label, icon: iconName }, section) {
   );
 }
 
+/** Turns move sounds on or off; styled like a nav link so it sits in both menus. */
+function soundToggle({ compact = false } = {}) {
+  const label = h("span");
+  const glyph = h("span", { class: "nav-icon" });
+  const toggle = h("button", { class: "nav-link sound-toggle", type: "button", onclick: () => sound.toggle() }, glyph, label);
+  const show = (on) => {
+    clear(glyph).append(icon(on ? "sound" : "muted"));
+    clear(label).append(compact ? "Sound" : on ? "Sound on" : "Sound off");
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.title = on ? "Move sounds are on; click to mute" : "Move sounds are off; click to turn them on";
+  };
+  show(sound.enabled);
+  // Both copies (sidebar and tab bar) stay in step; a copy dropped by the
+  // next renderNav unsubscribes itself.
+  const stop = sound.subscribe((on) => (toggle.isConnected ? show(on) : stop()));
+  return toggle;
+}
+
 function renderNav() {
   const section = currentSection();
   shell.classList.toggle("no-user", !context.user);
@@ -98,6 +117,7 @@ function renderNav() {
     h("a", { class: "brand", href: "#/" }, h("img", { src: "pieces/wN.svg", alt: "", width: 30, height: 30 }), "Chess Trainer"),
     h("nav", { class: "nav" }, NAV.map((item) => navLink(item, section))),
     button("Import games", { variant: "primary", icon: "import", href: "#/import", class: "btn btn-primary sidebar-cta" }),
+    soundToggle(),
     h(
       "div",
       { class: "sidebar-user" },
@@ -125,6 +145,7 @@ function renderNav() {
     tabbar,
     NAV.map((item) => navLink(item, section)),
     navLink({ route: "import", label: "Import", icon: "import" }, section),
+    soundToggle({ compact: true }), // the icon shows on or off
   );
 }
 

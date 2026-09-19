@@ -164,7 +164,7 @@ def test_frontend_is_served(client: TestClient) -> None:
         "views/dashboard.js", "views/games.js", "views/game.js", "views/puzzles.js",
         "views/puzzle.js", "views/stats.js", "views/import.js", "views/library-puzzle.js",
         "views/library-card.js", "views/recommended.js", "views/opening.js", "views/repeated.js",
-        "trainer.js", "playon.js",
+        "trainer.js", "playon.js", "sounds.js",
     ]  # fmt: skip
     for asset in assets:
         response = client.get(f"/app/{asset}")

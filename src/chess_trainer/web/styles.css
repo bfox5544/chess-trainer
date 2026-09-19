@@ -123,6 +123,8 @@ strong { font-weight: 650; }
   color: var(--text-2); font-weight: 550;
 }
 .nav-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.sound-toggle { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.nav-icon { display: inline-flex; }
 .nav-link[aria-current="page"] { background: var(--surface-3); color: var(--text); }
 .sidebar-cta { justify-content: center; }
 .sidebar-user { margin-top: auto; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 6px 0; border-top: 1px solid var(--line); }
@@ -544,12 +546,13 @@ button.game-row { width: calc(100% + 16px); border: 0; background: none; font: i
   .sidebar { display: none; }
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(6, 1fr);
     background: var(--surface); border-top: 1px solid var(--line);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .tabbar .nav-link { flex-direction: column; gap: 2px; padding: 8px 2px 6px; border-radius: 0; font-size: 0.7rem; }
   .tabbar .nav-link[aria-current="page"] { background: none; color: var(--ivory); }
+  .tabbar .sound-toggle { text-align: center; }
   main { padding: var(--space-4) var(--space-4) 96px; }
   .banner { margin: var(--space-3) var(--space-4) 0; }
   .analysis, .trainer { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }

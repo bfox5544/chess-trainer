@@ -130,6 +130,12 @@ Decisions worth knowing:
 - **Solved marks are stored in the browser**; for puzzles from your own
   games that is the only record, and the UI says so. Attempts at Lichess
   puzzles are also saved on the server, where they drive the puzzle rating.
+- **Move sounds are synthesized** (`sounds.js`, Web Audio): a knock for a
+  move, a heavier double knock for a capture, so there are no audio files to
+  ship or license. The board plays them itself when a new position is one
+  move on from the last (`board.moveBetween`, read from piece placement), so
+  every page gets them and stepping back, jumping or resetting stays silent.
+  A toggle in the menu turns them off; the choice is kept in the browser.
 - **All text goes through `textContent`** (`dom.js`), so usernames and opening
   names from the platforms cannot inject markup.
 - There is no login: the chosen profile is remembered in `localStorage`

@@ -3,9 +3,57 @@
 // It knows nothing about chess rules; legality lives in chess.js.
 
 import { append, h, svg } from "./dom.js";
+import { playMoveSound } from "./sounds.js";
 
 const FILES = "abcdefgh";
 const DRAG_THRESHOLD_PX = 5;
+
+/**
+ * If `after` is `before` with one move played by the side to move, whether
+ * that move captured; otherwise null. Read from the piece placement alone
+ * (the board knows no rules): every square the mover left or reached holds
+ * the mover's pieces, plus at most one enemy pawn gone (en passant). So
+ * stepping back, jumping several moves or resetting is not a move.
+ */
+export function moveBetween(before, after) {
+  const old = parseFen(before);
+  const now = parseFen(after);
+  if (old.turn === now.turn) return null;
+  const mover = old.turn === "white" ? "w" : "b";
+  let left = 0;
+  let reached = [];
+  let passed = null; // an enemy pawn that vanished: only en passant allows that
+  let capture = false;
+  for (const square of new Set([...old.pieces.keys(), ...now.pieces.keys()])) {
+    const was = old.pieces.get(square);
+    const is = now.pieces.get(square);
+    if (was === is) continue;
+    if (is === undefined) {
+      if (was[0] === mover) left += 1;
+      else if (was[1] === "P" && !passed) passed = square;
+      else return null;
+    } else if (is[0] !== mover) {
+      return null;
+    } else {
+      reached.push(square);
+      if (was !== undefined) {
+        if (was[0] === mover) return null;
+        capture = true;
+      }
+    }
+  }
+  if (passed) {
+    // The capturing pawn lands right behind the pawn it takes.
+    const [to] = reached;
+    const behind = `${passed[0]}${mover === "w" ? 6 : 3}`;
+    const fromRank = mover === "w" ? "5" : "4";
+    if (left !== 1 || reached.length !== 1 || to !== behind || passed[1] !== fromRank) return null;
+    if (now.pieces.get(to) !== `${mover}P`) return null;
+    return { capture: true };
+  }
+  const castles = left === 2 && reached.length === 2;
+  return (left === 1 && reached.length === 1) || castles ? { capture } : null;
+}
 
 export function parseFen(fen) {
   const pieces = new Map(); // "e4" -> "wP"
@@ -108,6 +156,9 @@ export class Board {
   }
 
   setPosition(fen) {
+    // A position one move on from the last one sounds like that move.
+    const move = this.fen && this.fen !== fen ? moveBetween(this.fen, fen) : null;
+    if (move) playMoveSound(move);
     this.fen = fen;
     const { pieces } = parseFen(fen);
     for (const [name, square] of this.squares) {
