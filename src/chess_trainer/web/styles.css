@@ -450,6 +450,17 @@ progress::-moz-progress-bar { background: var(--ivory); }
 .reason-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; transform: translateY(-1px); }
 .result-why { margin: var(--space-3) 0 var(--space-2); font-weight: 600; }
 .coach-meta { display: flex; gap: 6px; }
+.moments { display: grid; gap: var(--space-2); }
+.moment-list { display: grid; gap: 2px; }
+.moment-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.moment-row:hover { background: var(--surface-2); }
+.moment-move { font-weight: 650; min-width: 7ch; }
+.moment-title { color: var(--text-2); }
+.moment-found { margin-left: auto; color: var(--c-best); font-weight: 800; }
+.moment-progress { margin-left: auto; }
+.moment-summary { display: grid; gap: 4px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.moment-wrong { color: var(--c-mistake); }
+.moment-controls { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .move-list { position: relative; max-height: 300px; overflow-y: auto; margin: 0 calc(-1 * var(--space-2)); font-variant-numeric: tabular-nums; }
 .move-row { display: grid; grid-template-columns: 40px 1fr 1fr; align-items: center; }

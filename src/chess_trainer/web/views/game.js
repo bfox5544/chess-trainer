@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { Board, checkedKingSquare, createEvalBar } from "../board.js";
 import { createEvalGraph } from "../charts.js";
 import { append, clear, formatClock, formatDate, formatEval, h, titleCase } from "../dom.js";
+import { createKeyMoments } from "../moments.js";
 import { HIGHLIGHTS, MOVE_KINDS, button, chip, emptyState, kindBadge, moveKind, panel, reasonList } from "../ui.js";
 import { Chess } from "../vendor/chess.js";
 
@@ -96,6 +97,18 @@ export async function renderGame(container, context, gameId, startPly) {
   let current = -1; // -1 = start position; i = position after moves[i]
   let showingBest = false;
 
+  const coachPanel = panel(null, coach);
+  // Turning points as "find the move" exercises on this board.
+  const keyMoments = report.key_moments.length
+    ? createKeyMoments({
+        board,
+        moments: report.key_moments,
+        moves,
+        onReview: (ply) => show(ply ?? current),
+        onActive: (active) => (coachPanel.hidden = active),
+      })
+    : null;
+
   const points = [whitePctBefore(moves[0]), ...moves.map(whitePctAfter)];
   const markers = moves
     .map((move, index) => ({ index, kind: moveKind(move) }))
@@ -150,6 +163,7 @@ export async function renderGame(container, context, gameId, startPly) {
   }
 
   function show(index) {
+    if (keyMoments?.active()) keyMoments.stop(true);
     current = Math.max(-1, Math.min(moves.length - 1, index));
     showingBest = false;
     draw();
@@ -231,7 +245,7 @@ export async function renderGame(container, context, gameId, startPly) {
   function flip() {
     board.flip();
     placePlayers();
-    draw();
+    if (!keyMoments?.active()) draw(); // an exercise keeps its own position
   }
   document.addEventListener("keydown", onKey);
 
@@ -266,7 +280,8 @@ export async function renderGame(container, context, gameId, startPly) {
           sideSummary(game.white_username, "white", report.white, userColor),
           sideSummary(game.black_username, "black", report.black, userColor),
         ),
-        panel(null, coach),
+        keyMoments ? panel("Key moments", keyMoments.element) : null,
+        coachPanel,
         panel("Winning chances", graph.element, h("p", { class: "muted small" }, "Light area is White's share. Dots mark mistakes, blunders, and great and brilliant moves. Click to jump.")),
         panel("Moves", moveList(moves, moveCells, show)),
       ),
@@ -274,7 +289,10 @@ export async function renderGame(container, context, gameId, startPly) {
   );
   placePlayers();
   show(startPly !== undefined && moves[Number(startPly)] ? Number(startPly) : -1);
-  return () => document.removeEventListener("keydown", onKey);
+  return () => {
+    keyMoments?.stop(true);
+    document.removeEventListener("keydown", onKey);
+  };
 }
 
 export function arrowOf(uci) {

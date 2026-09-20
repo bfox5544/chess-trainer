@@ -207,11 +207,36 @@ class UserGameOut(ApiModel):
     stats: StatsOut | None
 
 
+class KeyMomentOut(ApiModel):
+    ply: int = Field(description="The user's move; the exercise is the position before it.")
+    move_number: int
+    color: Color
+    kind: str = Field(description="mistake, missed, punished, great or brilliant.")
+    title: str
+    text: str
+    fen: str
+    played_uci: str
+    played_san: str
+    answer_uci: str = Field(description="The move to find.")
+    answer_san: str
+    answer_line: list[str] = Field(description="UCI from `fen`, starting with the answer.")
+    previous_uci: str | None = Field(description="The opponent's move that led here.")
+    previous_san: str | None
+    win_pct_before: float = Field(description="The user's, before the moment.")
+    win_pct_after: float
+    swing: float = Field(description="Win-% points at stake; moments are ranked by it.")
+    explanation: list[ReasonOut]
+
+
 class GameReportOut(ApiModel):
     game: GameOut
     white: StatsOut
     black: StatsOut
     moves: list[MoveOut]
+    key_moments: list[KeyMomentOut] = Field(
+        description="The linked accounts' turning points, in game order: each a position "
+        "to find the right move in."
+    )
 
 
 class BucketOut(ApiModel):

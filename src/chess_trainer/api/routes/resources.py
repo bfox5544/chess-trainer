@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from chess_trainer.api.deps import SessionDep
+from chess_trainer.api.deps import SessionDep, SettingsDep
 from chess_trainer.api.schemas import (
     GameOut,
     GameReportOut,
     JobOut,
     JobSummary,
+    KeyMomentOut,
     LastMoveOut,
     MoveOut,
     PuzzleDetailOut,
@@ -18,6 +19,7 @@ from chess_trainer.db.enums import PuzzleStatus
 from chess_trainer.db.models import Job, Puzzle
 from chess_trainer.jobs import queue
 from chess_trainer.reports.game_report import build_game_report, explain_ply, move_at
+from chess_trainer.reports.key_moments import KeyMomentConfig
 
 router = APIRouter()
 
@@ -33,11 +35,12 @@ def job_status(job_id: int, session: SessionDep) -> JobOut:
 
 
 @router.get("/games/{game_id}/analysis", response_model=GameReportOut, tags=["games"])
-def game_analysis(game_id: int, session: SessionDep) -> GameReportOut:
+def game_analysis(game_id: int, session: SessionDep, settings: SettingsDep) -> GameReportOut:
     """Every move with its classification and a plain-language explanation,
     plus per-side totals. `moves` is empty (and `game.analyzed_depth` null)
     until the game has been analyzed."""
-    report = build_game_report(session, game_id)
+    config = KeyMomentConfig(settings.key_moments_max, settings.key_moment_min_swing)
+    report = build_game_report(session, game_id, config)
     if report is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"game {game_id} not found")
     moves = [
@@ -51,6 +54,7 @@ def game_analysis(game_id: int, session: SessionDep) -> GameReportOut:
         white=StatsOut.model_validate(report.white),
         black=StatsOut.model_validate(report.black),
         moves=moves,
+        key_moments=[KeyMomentOut.model_validate(moment) for moment in report.key_moments],
     )
 
 

@@ -115,6 +115,16 @@ def test_games_and_game_report(client: TestClient, account_id: int, analyzed: in
         "blunder",
         "g6",
     )
+    # The account plays Black: its blunder is the game's one key moment.
+    (moment,) = report["key_moments"]
+    assert (moment["ply"], moment["kind"], moment["title"]) == (5, "mistake", "Your blunder")
+    assert (moment["played_san"], moment["answer_san"], moment["answer_uci"]) == (
+        "Nf6",
+        "g6",
+        "g7g6",
+    )
+    assert moment["fen"] == blunder["fen_before"] and moment["previous_san"] == "Qh5"
+    assert moment["explanation"] == blunder["explanation"]
 
 
 def test_weakness_report(client: TestClient, user_id: int, analyzed: int) -> None:
@@ -164,7 +174,7 @@ def test_frontend_is_served(client: TestClient) -> None:
         "views/dashboard.js", "views/games.js", "views/game.js", "views/puzzles.js",
         "views/puzzle.js", "views/stats.js", "views/import.js", "views/library-puzzle.js",
         "views/library-card.js", "views/recommended.js", "views/opening.js", "views/repeated.js",
-        "trainer.js", "playon.js", "sounds.js", "views/highlights.js",
+        "trainer.js", "playon.js", "sounds.js", "views/highlights.js", "moments.js",
     ]  # fmt: skip
     for asset in assets:
         response = client.get(f"/app/{asset}")

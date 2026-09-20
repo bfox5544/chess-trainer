@@ -11,7 +11,8 @@ from chess_trainer.analysis.explain import MoveFacts, Reason, explain_move
 from chess_trainer.analysis.highlights import highlight_text
 from chess_trainer.analysis.winprob import Eval
 from chess_trainer.db.enums import Color
-from chess_trainer.db.models import Game, MoveAnalysis
+from chess_trainer.db.models import AccountGame, Game, MoveAnalysis
+from chess_trainer.reports.key_moments import KeyMoment, KeyMomentConfig, find_key_moments
 from chess_trainer.reports.stats import MoveStats, summarize
 
 
@@ -23,6 +24,8 @@ class GameReport:
     black: MoveStats
     # Parallel to `moves`: why each move was good or bad.
     explanations: list[list[Reason]] = field(default_factory=list)
+    # The turning points among the tracked accounts' moves, in game order.
+    key_moments: list[KeyMoment] = field(default_factory=list)
 
 
 def side_stats(moves: list[MoveAnalysis], color: Color) -> MoveStats:
@@ -81,19 +84,31 @@ def game_moves(session: Session, game_id: int) -> list[MoveAnalysis]:
     return list(session.scalars(stmt))
 
 
-def build_game_report(session: Session, game_id: int) -> GameReport | None:
+def tracked_colors(session: Session, game_id: int) -> set[Color]:
+    """The colors a linked account played in this game."""
+    stmt = select(AccountGame.color).where(AccountGame.game_id == game_id)
+    return set(session.scalars(stmt))
+
+
+def build_game_report(
+    session: Session, game_id: int, moment_config: KeyMomentConfig | None = None
+) -> GameReport | None:
     """None if the game does not exist."""
     game = session.get(Game, game_id)
     if game is None:
         return None
     moves = game_moves(session, game_id)
     explanations = [explain_at(moves, index) for index in range(len(moves))]
+    moments = find_key_moments(
+        moves, explanations, tracked_colors(session, game_id), moment_config or KeyMomentConfig()
+    )
     return GameReport(
         game,
         moves,
         side_stats(moves, Color.WHITE),
         side_stats(moves, Color.BLACK),
         explanations,
+        moments,
     )
 
 

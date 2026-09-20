@@ -24,8 +24,9 @@ from chess_trainer.analysis.phase import first_ply_in, game_phases
 from chess_trainer.analysis.replay import Replay, replay_pgn
 from chess_trainer.analysis.winprob import win_pct
 from chess_trainer.db.base import utcnow
-from chess_trainer.db.enums import Color, Highlight, Phase
-from chess_trainer.db.models import AccountGame, Game, MoveAnalysis
+from chess_trainer.db.enums import Highlight, Phase
+from chess_trainer.db.models import Game, MoveAnalysis
+from chess_trainer.reports.game_report import tracked_colors
 
 
 def analyze_game(
@@ -93,12 +94,6 @@ def upsert_moves(session: Session, game_id: int, records: list[MoveRecord]) -> N
         if column.name not in {"id", "game_id", "ply"}
     }
     session.execute(stmt.on_conflict_do_update(index_elements=["game_id", "ply"], set_=updatable))
-
-
-def tracked_colors(session: Session, game_id: int) -> set[Color]:
-    """The colors a linked account played in this game."""
-    stmt = select(AccountGame.color).where(AccountGame.game_id == game_id)
-    return set(session.scalars(stmt))
 
 
 def mark_highlights(

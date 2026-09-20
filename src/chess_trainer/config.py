@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     highlight_min_win_pct_after: float = 35.0
     highlight_max_win_pct_before: float = 90.0
 
+    # Key moments of a game (reports/key_moments.py)
+    key_moments_max: int = 4
+    key_moment_min_swing: float = 10.0  # win-% points at stake
+
     # Time pressure: clock below min(seconds, fraction * base time).
     time_pressure_seconds: float = 30.0
     time_pressure_fraction: float = 0.1
